@@ -17,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import app.detent.data.loadLibrary
 import app.detent.ui.DetentApp
 import app.detent.ui.DetentController
@@ -25,6 +27,19 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val controller: DetentController get() = (application as DetentApplication).controller
+
+    /** Fullscreen: no status bar or navigation bar. A swipe from the edge shows them for a moment. */
+    private fun hideSystemBars() {
+        val insets = WindowCompat.getInsetsController(window, window.decorView)
+        insets.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insets.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    // The bars come back after a dialog or the share sheet; hide them again when we have focus.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -42,8 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) handleRedirect(intent)
-        // The screen is black at the top, so the status bar needs light icons.
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+        hideSystemBars()
 
         setContent {
             val audioPermission = if (Build.VERSION.SDK_INT >= 33) {

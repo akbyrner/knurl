@@ -7,9 +7,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,13 +39,16 @@ import androidx.compose.ui.unit.sp
 fun DetentApp(controller: DetentController) {
     val haptics = remember { Haptics(controller.appContext) }
 
+    CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = InterFamily)) {
     BoxWithConstraints(Modifier.fillMaxSize().background(PLANE)) {
         // The wheel is sized from the phone, so the view above it keeps about two thirds of the height.
         val wheel = minOf(maxWidth * 0.62f, maxHeight * 0.30f)
 
         Column(Modifier.fillMaxSize()) {
             val entry = controller.current
-            val screenModifier = Modifier.weight(1f).fillMaxWidth().statusBarsPadding()
+            // The status bar is hidden, so only the camera cut-out needs room at the top.
+            val screenModifier = Modifier.weight(1f).fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top))
             when (val screen = entry.screen) {
                 Screen.Flow -> AlbumFlow(controller.library.albums, entry.selected, screenModifier)
                 Screen.SpotifyAlbumsFlow -> {
@@ -75,6 +87,35 @@ fun DetentApp(controller: DetentController) {
                         if (controller.button(btn)) haptics.press()
                     },
                 )
+                // Shuffle and repeat sit at the wheel's top corners, on the same black plane.
+                val modeSize = wheel * 0.218f
+                ModeButton(
+                    icon = ModeIcon.Shuffle,
+                    lit = controller.shuffle,
+                    description = if (controller.shuffle) "Shuffle on" else "Shuffle off",
+                    size = modeSize,
+                    onClick = {
+                        controller.toggleShuffle()
+                        haptics.press()
+                    },
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 18.dp).offset(y = (-12).dp),
+                )
+                ModeButton(
+                    icon = ModeIcon.Repeat,
+                    lit = controller.repeat != RepeatSetting.Off,
+                    description = when (controller.repeat) {
+                        RepeatSetting.Off -> "Repeat off"
+                        RepeatSetting.All -> "Repeat all"
+                        RepeatSetting.One -> "Repeat song"
+                    },
+                    size = modeSize,
+                    badge = if (controller.repeat == RepeatSetting.One) "1" else null,
+                    onClick = {
+                        controller.cycleRepeat()
+                        haptics.press()
+                    },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 18.dp).offset(y = (-12).dp),
+                )
             }
         }
 
@@ -94,6 +135,7 @@ fun DetentApp(controller: DetentController) {
                 textAlign = TextAlign.Center,
             )
         }
+    }
     }
 }
 

@@ -229,7 +229,8 @@ class DetentController(
                     showNotice(remote.detail ?: "Couldn't reach the Spotify app")
                     return@launch
                 }
-                remote.play(uri, startIndex, queueAfter)
+                // Spotify forgets shuffle and repeat when a new playlist starts, so set them again afterwards.
+                remote.play(uri, startIndex, queueAfter, onStarted = { pushModesToSpotify() })
                 source = Source.Spotify
                 if (current.screen != Screen.NowPlaying) push(Screen.NowPlaying)
             } finally {
@@ -352,6 +353,18 @@ class DetentController(
         ListModel(title, tracks.size, { tracks[it].title }, { tracks[it].artist }, chevron = false, emptyText = list.emptyText)
     }
 
+    /** The shuffle button beside the wheel. */
+    fun toggleShuffle() {
+        shuffle = !shuffle
+        applyModes()
+    }
+
+    /** The repeat button beside the wheel: off, then all, then one, then off again. */
+    fun cycleRepeat() {
+        repeat = RepeatSetting.entries[(repeat.ordinal + 1) % RepeatSetting.entries.size]
+        applyModes()
+    }
+
     private fun applyModes() {
         prefs.edit().putBoolean("shuffle", shuffle).putInt("repeat", repeat.ordinal).apply()
         player.setModes(shuffle, repeat.playerMode)
@@ -373,8 +386,9 @@ class DetentController(
         add("Albums")
         add("Artists")
         add("Songs")
-        add("Shuffle Songs")
+        add("Playlists")
         add("Sources")
+        add("Shuffle Songs")
         add("Settings")
         if (hasNowPlaying) add("Now Playing")
     }
@@ -543,6 +557,14 @@ class DetentController(
                     if (library.tracks.any { it.uri != null }) {
                         playLocal(library.tracks.shuffled(), 0)
                         push(Screen.NowPlaying)
+                    }
+                }
+                "Playlists" -> {
+                    if (spotifySignedIn) {
+                        load(playlists) { spotifyApi.playlists() }
+                        push(Screen.SpotifyPlaylists)
+                    } else {
+                        showNotice("Playlists come from Spotify. Sign in under Sources.")
                     }
                 }
                 "Sources" -> push(Screen.Sources)

@@ -33,6 +33,8 @@ class RemoteState(
     val positionMs: Long,
     val isPaused: Boolean,
     val shuffling: Boolean,
+    /** Spotify's repeat number: 0 off, 1 this song, 2 everything. */
+    val repeatMode: Int,
     /** Spotify's identifier for the cover art, used as the cache key. Null when the track has none. */
     val imageKey: String?,
     /** When this report arrived, so the position can keep moving between reports. */
@@ -149,9 +151,11 @@ class SpotifyRemote(
                     positionMs = player.playbackPosition,
                     isPaused = player.isPaused,
                     shuffling = player.playbackOptions?.isShuffling == true,
+                    repeatMode = player.playbackOptions?.repeatMode ?: 0,
                     imageKey = imageKey,
                     atMs = System.currentTimeMillis(),
                 )
+                Log.d(TAG, "state: '${track.name}' pos=${player.playbackPosition} paused=${player.isPaused} shuffle=${player.playbackOptions?.isShuffling} repeat=${player.playbackOptions?.repeatMode}")
                 if (imageKey != null && imageKey != lastImageKey) {
                     lastImageKey = imageKey
                     appRemote.imagesApi.getImage(track.imageUri, Image.Dimension.LARGE)
@@ -179,11 +183,12 @@ class SpotifyRemote(
      * Plays a track, album or playlist. With [startIndex] it then jumps to that track inside the album or
      * playlist; [queueAfter] adds songs to the queue behind it.
      */
-    fun play(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList()) {
+    fun play(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList(), onStarted: () -> Unit = {}) {
         val api = remote?.playerApi ?: return
         api.play(uri).setResultCallback {
             if (startIndex != null && startIndex > 0) api.skipToIndex(uri, startIndex)
             queueAfter.forEach { api.queue(it) }
+            onStarted()
         }.setErrorCallback { Log.w(TAG, "play failed: ${it.message}") }
     }
 
@@ -199,7 +204,7 @@ class SpotifyRemote(
     fun seekTo(positionMs: Long) {
         remote?.playerApi?.seekTo(positionMs)
         state = state?.let {
-            RemoteState(it.uri, it.title, it.artist, it.album, it.durationMs, positionMs, it.isPaused, it.shuffling, it.imageKey, System.currentTimeMillis())
+            RemoteState(it.uri, it.title, it.artist, it.album, it.durationMs, positionMs, it.isPaused, it.shuffling, it.repeatMode, it.imageKey, System.currentTimeMillis())
         }
     }
 
