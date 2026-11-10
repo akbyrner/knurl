@@ -6,15 +6,24 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -39,16 +48,13 @@ private const val TICK_DEGREES = 16.0
 @Composable
 fun ClickWheel(
     modifier: Modifier = Modifier,
-    ringColor: Color,
-    labelColor: Color,
-    centerColor: Color,
-    rimColor: Color = Color.Black.copy(alpha = 0.10f),
     onTick: (Int) -> Unit,
     onButton: (WheelButton) -> Unit,
 ) {
     val tick by rememberUpdatedState(onTick)
     val button by rememberUpdatedState(onButton)
     val slop = LocalViewConfiguration.current.touchSlop
+    val grain = remember { grainShader() }
 
     Canvas(
         modifier
@@ -107,11 +113,12 @@ fun ClickWheel(
                 }
             },
     ) {
-        drawWheel(ringColor, labelColor, centerColor, rimColor)
+        drawWheel(grain)
     }
 }
 
-private const val CENTER_RATIO = 0.36f
+/** The centre button's share of the wheel's radius: 64 of 163 in the design. */
+private const val CENTER_RATIO = 64f / 163f
 
 /** Which quadrant of the ring a touch landed in. Screen y grows downward. */
 private fun quadrant(v: Offset): WheelButton {
@@ -124,98 +131,93 @@ private fun quadrant(v: Offset): WheelButton {
     }
 }
 
-private fun DrawScope.drawWheel(ring: Color, label: Color, center: Color, rim: Color) {
-    val r = size.minDimension / 2f
-    val c = Offset(size.width / 2f, size.height / 2f)
-
-    // ring, with a soft top-light like the real thing
-    drawCircle(
-        brush = Brush.linearGradient(
-            0f to ring.lighten(0.06f),
-            1f to ring.darken(0.06f),
-            start = Offset(0f, 0f),
-            end = Offset(size.width, size.height),
-        ),
-        radius = r,
-        center = c,
-    )
-    drawCircle(rim, radius = r, center = c, style = Stroke(width = 2f))
-
-    // centre button
-    drawCircle(
-        brush = Brush.linearGradient(
-            0f to center.lighten(0.05f),
-            1f to center.darken(0.05f),
-            start = Offset(c.x - r * CENTER_RATIO, c.y - r * CENTER_RATIO),
-            end = Offset(c.x + r * CENTER_RATIO, c.y + r * CENTER_RATIO),
-        ),
-        radius = r * CENTER_RATIO,
-        center = c,
-    )
-    drawCircle(rim, radius = r * CENTER_RATIO, center = c, style = Stroke(width = 2f))
-
-    val labelR = r * 0.68f
-    val glyph = r * 0.09f
-
-    // MENU label (top)
-    drawMenuLabel(Offset(c.x, c.y - labelR), r * 0.13f, label)
-    // next / prev (right / left)
-    drawSkip(Offset(c.x + labelR, c.y), glyph, label, forward = true)
-    drawSkip(Offset(c.x - labelR, c.y), glyph, label, forward = false)
-    // play/pause (bottom)
-    drawPlayPause(Offset(c.x, c.y + labelR), glyph, label)
-}
-
-private fun DrawScope.drawMenuLabel(at: Offset, size: Float, color: Color) {
-    // Five bars-and-caps stand-in for "MENU" without shipping a font yet:
-    // drawn as a 3-line list glyph, which reads clearly and scales cleanly.
-    val w = size * 1.5f
-    val gap = size * 0.55f
-    for (i in -1..1) {
-        drawLine(
-            color,
-            Offset(at.x - w / 2, at.y + i * gap),
-            Offset(at.x + w / 2, at.y + i * gap),
-            strokeWidth = size * 0.28f,
-        )
+/** A small tile of faint random speckle, repeated over the wheel for the grain the design shows. */
+private fun grainShader(): ShaderBrush {
+    val tile = 128
+    val rnd = java.util.Random(7)
+    val px = IntArray(tile * tile) {
+        val gray = 120 + rnd.nextInt(136)
+        val alpha = rnd.nextInt(24) // up to about 9% opacity
+        (alpha shl 24) or (gray shl 16) or (gray shl 8) or gray
     }
+    val bitmap = android.graphics.Bitmap.createBitmap(px, tile, tile, android.graphics.Bitmap.Config.ARGB_8888)
+    return ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
 }
 
-private fun DrawScope.drawTriangle(tip: Offset, h: Float, color: Color, pointRight: Boolean) {
-    val dir = if (pointRight) 1f else -1f
-    val p = Path().apply {
-        moveTo(tip.x, tip.y)
-        lineTo(tip.x - dir * h, tip.y - h * 0.9f)
-        lineTo(tip.x - dir * h, tip.y + h * 0.9f)
-        close()
-    }
-    drawPath(p, color, style = Fill)
-}
+private val LABEL = Color(0xFFDCDCE0)
 
-private fun DrawScope.drawSkip(at: Offset, g: Float, color: Color, forward: Boolean) {
-    val dir = if (forward) 1f else -1f
-    // two triangles + a bar, ⏭ / ⏮
-    drawTriangle(Offset(at.x + dir * g * 0.2f, at.y), g, color, forward)
-    drawTriangle(Offset(at.x + dir * g * 1.2f, at.y), g, color, forward)
-    drawLine(
-        color,
-        Offset(at.x + dir * g * 1.45f, at.y - g * 0.9f),
-        Offset(at.x + dir * g * 1.45f, at.y + g * 0.9f),
-        strokeWidth = g * 0.35f,
+/**
+ * Draws the wheel in the design's own 328-unit space, scaled to fit: a dark glossy disc with grain, a light top
+ * edge, a recessed centre button and the MENU, skip and play/pause labels.
+ */
+private fun DrawScope.drawWheel(grain: ShaderBrush) {
+    val k = size.minDimension / 328f
+    fun p(x: Float, y: Float) = Offset(x * k, y * k)
+    val c = p(164f, 164f)
+    val box = size.minDimension
+
+    // Dark surface, lit from the top.
+    drawCircle(
+        Brush.radialGradient(
+            0f to Color(0xFF36363C), 0.55f to Color(0xFF1F1F23), 1f to Color(0xFF131315),
+            center = Offset(box * 0.5f, box * 0.28f), radius = box * 0.78f,
+        ),
+        163f * k, c,
     )
+    // Fine grain over the surface.
+    drawCircle(grain, 163f * k, c)
+    // Soft sheen across the top.
+    drawCircle(
+        Brush.radialGradient(
+            0f to Color.White.copy(alpha = 0.12f), 1f to Color.Transparent,
+            center = Offset(box * 0.5f, 0f), radius = box * 0.62f,
+        ),
+        163f * k, c,
+    )
+    // Light edge, brighter at the top.
+    drawCircle(
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.30f), 0.5f to Color.White.copy(alpha = 0.04f), 1f to Color.White.copy(alpha = 0.12f),
+        ),
+        162.2f * k, c, style = Stroke(1.6f * k),
+    )
+
+    // Centre button: a dark well, then the button, then its rim.
+    drawCircle(Color(0xFF050506), 64f * k, c)
+    drawCircle(Color.Black.copy(alpha = 0.6f), 64.5f * k, c, style = Stroke(2f * k))
+    drawCircle(Brush.verticalGradient(listOf(Color(0xFF0D0D0F), Color(0xFF27272B)), startY = c.y - 58f * k, endY = c.y + 58f * k), 58f * k, c)
+    drawCircle(
+        Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.7f), Color.White.copy(alpha = 0.16f)), startY = c.y - 57f * k, endY = c.y + 57f * k),
+        57.3f * k, c, style = Stroke(1.4f * k),
+    )
+
+    // MENU
+    drawIntoCanvas { canvas ->
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = LABEL.toArgb()
+            textSize = 20f * k
+            letterSpacing = 0.15f
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 600, false)
+        }
+        canvas.nativeCanvas.drawText("MENU", 165.5f * k, 62f * k, paint)
+    }
+
+    fun triangle(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) {
+        drawPath(Path().apply { moveTo(x1 * k, y1 * k); lineTo(x2 * k, y2 * k); lineTo(x3 * k, y3 * k); close() }, LABEL)
+    }
+    fun bar(x: Float, y: Float, w: Float, h: Float) = drawRoundRect(LABEL, p(x, y), Size(w * k, h * k), CornerRadius(1f * k))
+
+    // Next
+    triangle(256f, 153f, 256f, 175f, 270f, 164f)
+    triangle(270f, 153f, 270f, 175f, 284f, 164f)
+    bar(284f, 153f, 4f, 22f)
+    // Previous
+    triangle(72f, 153f, 72f, 175f, 58f, 164f)
+    triangle(58f, 153f, 58f, 175f, 44f, 164f)
+    bar(40f, 153f, 4f, 22f)
+    // Play / pause
+    triangle(147f, 253f, 147f, 275f, 165f, 264f)
+    bar(170f, 253f, 4.5f, 22f)
+    bar(178.5f, 253f, 4.5f, 22f)
 }
-
-private fun DrawScope.drawPlayPause(at: Offset, g: Float, color: Color) {
-    drawTriangle(Offset(at.x - g * 0.15f, at.y), g, color, pointRight = true)
-    val bx = at.x + g * 0.55f
-    drawLine(color, Offset(bx, at.y - g * 0.9f), Offset(bx, at.y + g * 0.9f), strokeWidth = g * 0.35f)
-    drawLine(color, Offset(bx + g * 0.6f, at.y - g * 0.9f), Offset(bx + g * 0.6f, at.y + g * 0.9f), strokeWidth = g * 0.35f)
-}
-
-private fun Color.lighten(f: Float) = Color(
-    (red + f).coerceAtMost(1f), (green + f).coerceAtMost(1f), (blue + f).coerceAtMost(1f), alpha,
-)
-
-private fun Color.darken(f: Float) = Color(
-    (red - f).coerceAtLeast(0f), (green - f).coerceAtLeast(0f), (blue - f).coerceAtLeast(0f), alpha,
-)

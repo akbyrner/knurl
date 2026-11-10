@@ -11,7 +11,7 @@ import app.detent.data.Album
 import app.detent.data.Library
 import app.detent.data.demoLibrary
 import app.detent.playback.PlayerController
-import app.detent.spotify.LibrespotEngine
+import app.detent.spotify.SpotifyRemote
 import app.detent.spotify.SpotifyAlbum
 import app.detent.spotify.SpotifyApi
 import app.detent.spotify.SpotifyAuth
@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 sealed interface Screen {
     data object MainMenu : Screen
     data object Flow : Screen
+    data object Sources : Screen
     data object SpotifyHome : Screen
     data object SpotifyPlaylists : Screen
     data class SpotifyPlaylistTracks(val id: String, val name: String) : Screen
@@ -53,6 +54,8 @@ class NowPlayingInfo(
     val durationMs: Long,
     val positionMs: Long,
     val isPlaying: Boolean,
+    /** "3 of 12": where the song sits in its album, when that is known. */
+    val trackOf: String? = null,
 )
 
 /** What the wheel does on Now Playing. Select switches between the two. */
@@ -78,7 +81,19 @@ class ListModel(
     val valueAt: ((Int) -> String)? = null,
     /** Shown instead of rows when [count] is 0, for example while Spotify is still loading. */
     val emptyText: String = "Nothing here yet",
+    /** When set, the screen opens with an album-style header (cover, title, artist) instead of a plain title. */
+    val header: ListHeader? = null,
+    /** A track number shown at the left of each row. */
+    val numberAt: ((Int) -> String)? = null,
+    /** Rows drawn quieter, for choices that aren't available yet. */
+    val dimAt: ((Int) -> Boolean)? = null,
+    /** Rows that get a check mark, such as the music source in use. */
+    val checkAt: ((Int) -> Boolean)? = null,
+    /** Row height in dp when the default doesn't suit. */
+    val rowHeightDp: Int? = null,
 )
+
+class ListHeader(val title: String, val subtitle: String, val art: Album?)
 
 /** A Spotify list on its way: still loading, failed with a short reason, or ready. */
 class SpotifyList<T>(val items: List<T> = emptyList(), val loading: Boolean = false, val error: String? = null) {
@@ -115,45 +130,40 @@ class DetentController(val appContext: android.content.Context, val player: Play
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val spotifyAuth = SpotifyAuth(appContext)
     private val spotifyApi = SpotifyApi(spotifyAuth)
-    private val engine = LibrespotEngine(appContext)
+    private val remote = SpotifyRemote(appContext, spotifyAuth.clientId).also { r ->
+        // Cover art for what the Spotify app is playing arrives as a bitmap; hand it to the art cache.
+        r.onImage = { key, bitmap -> putArt(spotifyArtId(key), bitmap) }
+        // Shuffle and repeat from Settings apply to Spotify too, each time we connect.
+        r.onConnected = { pushModesToSpotify() }
+    }
 
-    // --- Now playing, from either the phone's own player or Spotify -------------------------------
+    // --- Now playing, from either the phone's own player or the Spotify app -----------------------
 
     private enum class Source { None, Local, Spotify }
 
     private var source = Source.None
 
-    /** What Spotify is playing, as last reported. The position moves on its own between reports. */
-    private var spotifyNow by mutableStateOf<SpotifyNow?>(null)
-
-    private class SpotifyNow(val track: SpotifyTrack, val isPlaying: Boolean, val positionMs: Long, val atMs: Long) {
-        fun positionAt(nowMs: Long): Long =
-            if (isPlaying) (positionMs + (nowMs - atMs)).coerceIn(0L, track.durationMs.takeIf { it > 0 } ?: Long.MAX_VALUE) else positionMs
-    }
-
-    private var pollJob: Job? = null
     private var seekJob: Job? = null
 
-    val hasNowPlaying: Boolean get() = player.currentTrackId != null || spotifyNow != null
+    val hasNowPlaying: Boolean
+        get() = player.currentTrackId != null || (source == Source.Spotify && remote.state != null)
 
     /** What Now Playing draws. [nowMs] is the current time in milliseconds, so the bar keeps moving. */
     fun nowPlayingInfo(nowMs: Long): NowPlayingInfo? {
         if (source == Source.Spotify) {
-            val s = spotifyNow ?: return null
-            val t = s.track
+            val s = remote.state ?: return null
             return NowPlayingInfo(
-                title = t.title,
-                artist = t.artist,
-                albumTitle = t.albumName,
+                title = s.title,
+                artist = s.artist,
+                albumTitle = s.album,
                 art = Album(
-                    id = (t.imageUrl ?: t.albumName).hashCode().toLong() or SPOTIFY_ID_BIT,
-                    title = t.albumName,
-                    artist = t.artist,
-                    artUrl = t.imageUrl,
+                    id = spotifyArtId(s.imageKey ?: s.album),
+                    title = s.album,
+                    artist = s.artist,
                 ),
-                durationMs = t.durationMs,
+                durationMs = s.durationMs,
                 positionMs = s.positionAt(nowMs),
-                isPlaying = s.isPlaying,
+                isPlaying = !s.isPaused,
             )
         }
         val track = player.currentTrackId?.let { library.track(it) } ?: return null
@@ -165,125 +175,72 @@ class DetentController(val appContext: android.content.Context, val player: Play
             durationMs = if (player.durationMs > 0) player.durationMs else track.durationMs,
             positionMs = player.positionMs,
             isPlaying = player.isPlaying,
+            trackOf = library.tracksOf(track.albumId).size.takeIf { it > 0 && track.trackNumber > 0 }
+                ?.let { "${track.trackNumber} of $it" },
         )
     }
 
-    /** Debug builds only: start the Spotify player and log how far it gets. Used from adb during development. */
-    fun debugStartPlayer() {
+    private fun spotifyArtId(key: String): Long = key.hashCode().toLong() or SPOTIFY_ID_BIT
+
+    private fun pushModesToSpotify() {
+        remote.setShuffle(shuffle)
+        // Spotify's repeat numbers: 0 off, 1 this song, 2 everything.
+        remote.setRepeat(when (repeat) { RepeatSetting.Off -> 0; RepeatSetting.One -> 1; RepeatSetting.All -> 2 })
+    }
+
+    /** Debug builds only: connect to the Spotify app and log how it went. Used from adb during development. */
+    fun debugConnectRemote() {
         scope.launch {
-            engine.start()
-            repeat(6) {
-                delay(1_000)
-                android.util.Log.d("detent", "player status=${engine.status} detail=${engine.detail}")
+            val ok = remote.ensureConnected()
+            android.util.Log.d("detent", "spotify remote connected=$ok detail=${remote.detail}")
+            if (ok) {
+                delay(2_000)
+                android.util.Log.d("detent", "spotify now playing=${remote.state?.title} paused=${remote.state?.isPaused}")
             }
-            engine.stop()
         }
     }
 
     private fun playLocal(tracks: List<app.detent.data.Track>, startIndex: Int) {
-        if (source == Source.Spotify) spotifyCommand { spotifyApi.pause() }
-        stopPolling()
+        if (source == Source.Spotify) remote.pause()
         source = Source.Local
         player.playQueue(tracks, startIndex)
     }
 
+    private var spotifyStarting = false
+
     /**
-     * Starts Spotify playback on this phone: brings up the player (signing in the first time), waits for the
-     * Detent device to show up in the account, then asks Spotify to play there.
+     * Starts a song, album or playlist in the Spotify app, in the background, then shows Now Playing.
+     * The first time, Spotify asks (in its own app) to allow Detent.
      */
-    private fun playSpotify(contextUri: String?, uris: List<String>?, offsetUri: String?) {
-        // A second Select while the first is still signing in or finding the device would start a second attempt.
+    private fun playSpotify(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList()) {
+        // A second Select while the first is still connecting would start a second attempt.
         if (spotifyStarting) return
         spotifyStarting = true
         scope.launch {
             try {
-                startSpotifyPlayback(contextUri, uris, offsetUri)
+                player.pause()
+                if (!remote.connected) showNotice("Connecting to Spotify…")
+                if (!remote.ensureConnected()) {
+                    showNotice(remote.detail ?: "Couldn't reach the Spotify app")
+                    return@launch
+                }
+                remote.play(uri, startIndex, queueAfter)
+                source = Source.Spotify
+                if (current.screen != Screen.NowPlaying) push(Screen.NowPlaying)
             } finally {
                 spotifyStarting = false
             }
         }
     }
 
-    private var spotifyStarting = false
-
-    private suspend fun startSpotifyPlayback(contextUri: String?, uris: List<String>?, offsetUri: String?) {
-        run {
-            if (!engine.available) {
-                showNotice("This build has no Spotify player")
-                return@run
-            }
-            player.pause()
-            val coldStart = engine.status != LibrespotEngine.Status.Authenticated
-            if (coldStart) showNotice(if (engine.status == LibrespotEngine.Status.Stopped) "Starting Spotify player…" else "Waiting for Spotify sign-in…")
-            if (!engine.ensureAuthenticated()) {
-                showNotice(engine.detail ?: "Spotify sign-in didn't finish")
-                return@run
-            }
-            val device = findDetentDevice()
-            if (device == null) {
-                showNotice("Detent didn't appear in your Spotify devices")
-                return@run
-            }
-            try {
-                spotifyApi.play(device.id, contextUri, uris, offsetUri)
-            } catch (e: SpotifyException) {
-                showNotice(e.message ?: "Spotify couldn't play that")
-                return@run
-            }
-            source = Source.Spotify
-            refreshSpotify(afterDelayMs = 700)
-            startPolling()
-            if (current.screen != Screen.NowPlaying) push(Screen.NowPlaying)
-        }
-    }
-
-    private suspend fun findDetentDevice(): app.detent.spotify.SpotifyDevice? {
-        repeat(20) {
-            val found = try {
-                spotifyApi.devices().firstOrNull { it.name == LibrespotEngine.DEVICE_NAME }
-            } catch (e: Exception) {
-                null
-            }
-            if (found != null) return found
-            delay(1_000)
-        }
-        return null
-    }
-
-    private suspend fun refreshSpotify(afterDelayMs: Long = 0) {
-        if (afterDelayMs > 0) delay(afterDelayMs)
-        try {
-            val p = spotifyApi.playback() ?: return
-            spotifyNow = SpotifyNow(p.track, p.isPlaying, p.progressMs, System.currentTimeMillis())
-        } catch (e: Exception) {
-            // A missed update is fine; the next one catches up.
-        }
-    }
-
-    /** Spotify has no push channel here, so ask now and then. The bar moves smoothly in between. */
-    private fun startPolling() {
-        pollJob?.cancel()
-        pollJob = scope.launch {
-            while (true) {
-                delay(4_000)
-                refreshSpotify()
-            }
-        }
-    }
-
-    private fun stopPolling() {
-        pollJob?.cancel()
-        pollJob = null
-    }
-
-    /** Runs a playback command, showing the new state at once and a short message if Spotify refuses. */
-    private fun spotifyCommand(block: suspend () -> Unit) {
+    /** Runs a command on the Spotify app, reconnecting first if it went away. */
+    private fun withSpotify(block: SpotifyRemote.() -> Unit) {
         scope.launch {
-            try {
-                block()
-            } catch (e: SpotifyException) {
-                showNotice(e.message ?: "Spotify error")
+            if (!remote.ensureConnected()) {
+                showNotice(remote.detail ?: "Couldn't reach the Spotify app")
+                return@launch
             }
+            remote.block()
         }
     }
 
@@ -292,21 +249,16 @@ class DetentController(val appContext: android.content.Context, val player: Play
             player.togglePlayPause()
             return
         }
-        val s = spotifyNow ?: return
-        val now = System.currentTimeMillis()
-        spotifyNow = SpotifyNow(s.track, !s.isPlaying, s.positionAt(now), now)
-        spotifyCommand { if (s.isPlaying) spotifyApi.pause() else spotifyApi.resume() }
+        val paused = remote.state?.isPaused ?: false
+        withSpotify { if (paused) resume() else pause() }
     }
 
     private fun skip(forward: Boolean) {
         if (source != Source.Spotify) {
-            if (forward) player.next() else skip(forward = false)
+            if (forward) player.next() else player.previous()
             return
         }
-        spotifyCommand {
-            if (forward) spotifyApi.next() else spotifyApi.previous()
-            refreshSpotify(afterDelayMs = 600)
-        }
+        withSpotify { if (forward) next() else previous() }
     }
 
     private fun seekBy(deltaMs: Long) {
@@ -314,19 +266,13 @@ class DetentController(val appContext: android.content.Context, val player: Play
             player.seekBy(deltaMs)
             return
         }
-        val s = spotifyNow ?: return
-        val now = System.currentTimeMillis()
-        val target = (s.positionAt(now) + deltaMs).coerceIn(0L, maxOf(0L, s.track.durationMs - 1))
-        spotifyNow = SpotifyNow(s.track, s.isPlaying, target, now)
-        // Many wheel ticks arrive in a burst; only the last position is sent to Spotify.
+        val s = remote.state ?: return
+        val target = (s.positionAt(System.currentTimeMillis()) + deltaMs).coerceIn(0L, maxOf(0L, s.durationMs - 1))
+        // The screen moves at once; many wheel ticks arrive in a burst, so only the last spot is sent to Spotify.
         seekJob?.cancel()
         seekJob = scope.launch {
-            delay(400)
-            try {
-                spotifyApi.seek(target)
-            } catch (e: SpotifyException) {
-                showNotice(e.message ?: "Spotify error")
-            }
+            delay(300)
+            if (remote.connected) remote.seekTo(target)
         }
     }
 
@@ -404,6 +350,7 @@ class DetentController(val appContext: android.content.Context, val player: Play
     private fun applyModes() {
         prefs.edit().putBoolean("shuffle", shuffle).putInt("repeat", repeat.ordinal).apply()
         player.setModes(shuffle, repeat.playerMode)
+        if (remote.connected) pushModesToSpotify()
     }
 
     private val stack = mutableStateListOf(Entry(Screen.MainMenu, 0))
@@ -422,12 +369,21 @@ class DetentController(val appContext: android.content.Context, val player: Play
         add("Artists")
         add("Songs")
         add("Shuffle Songs")
-        add("Spotify")
+        add("Sources")
         add("Settings")
         if (hasNowPlaying) add("Now Playing")
     }
 
     private val settingsItems = listOf("Shuffle", "Repeat")
+
+    /** Where music can come from: a title and a one-line description each. */
+    private val sourceItems = listOf(
+        "This phone" to "Music files stored on the phone",
+        "Navidrome or Subsonic" to "Streams from your own server",
+        "Spotify" to "Plays in the Spotify app, controlled here",
+        "Apple Music" to "Later",
+        "YouTube Music" to "Later",
+    )
 
     fun listModel(screen: Screen): ListModel? = when (screen) {
         Screen.MainMenu -> mainMenuItems().let { items ->
@@ -443,12 +399,14 @@ class DetentController(val appContext: android.content.Context, val player: Play
             ListModel(screen.artist, albums.size, { albums[it].title })
         }
         is Screen.AlbumTracks -> library.tracksOf(screen.albumId).let { tracks ->
+            val album = library.album(screen.albumId)
             ListModel(
-                library.album(screen.albumId)?.title.orEmpty(),
+                album?.title.orEmpty(),
                 tracks.size,
                 { tracks[it].title },
-                { formatTime(tracks[it].durationMs) },
                 chevron = false,
+                header = ListHeader(album?.title.orEmpty(), album?.artist.orEmpty(), album),
+                numberAt = { (tracks[it].trackNumber.takeIf { n -> n > 0 } ?: (it + 1)).toString() },
             )
         }
         Screen.Songs -> library.songs.let { songs ->
@@ -465,6 +423,15 @@ class DetentController(val appContext: android.content.Context, val player: Play
                 }
             },
         )
+        Screen.Sources -> ListModel(
+            "Sources",
+            sourceItems.size,
+            { sourceItems[it].first },
+            { sourceItems[it].second },
+            rowHeightDp = 64,
+            checkAt = { it == 0 },
+            dimAt = { it >= 3 },
+        )
         Screen.SpotifyHome -> spotifyHomeItems().let { items ->
             ListModel("Spotify", items.size, { items[it] }, chevron = items.size > 1)
         }
@@ -480,8 +447,24 @@ class DetentController(val appContext: android.content.Context, val player: Play
         is Screen.SpotifyPlaylistTracks ->
             spotifyTrackModel(screen.name, playlistTracks[screen.id] ?: SpotifyList(loading = true))
         Screen.SpotifyLiked -> spotifyTrackModel("Liked Songs", liked.value)
-        is Screen.SpotifyAlbumTracks ->
-            spotifyTrackModel(screen.name, albumTracks[screen.id] ?: SpotifyList(loading = true))
+        is Screen.SpotifyAlbumTracks -> {
+            val album = spotifyAlbums.value.items.firstOrNull { it.id == screen.id }
+            val flowAlbum = album?.let {
+                Album(id = it.id.hashCode().toLong() or SPOTIFY_ID_BIT, title = it.name, artist = it.artist, artUrl = it.imageUrl)
+            }
+            val list = albumTracks[screen.id] ?: SpotifyList(loading = true)
+            list.items.let { tracks ->
+                ListModel(
+                    screen.name,
+                    tracks.size,
+                    { tracks[it].title },
+                    chevron = false,
+                    emptyText = list.emptyText,
+                    header = ListHeader(screen.name, album?.artist.orEmpty(), flowAlbum),
+                    numberAt = { (it + 1).toString() },
+                )
+            }
+        }
         Screen.Flow, Screen.SpotifyAlbumsFlow, Screen.NowPlaying -> null
     }
 
@@ -557,9 +540,15 @@ class DetentController(val appContext: android.content.Context, val player: Play
                         push(Screen.NowPlaying)
                     }
                 }
-                "Spotify" -> push(Screen.SpotifyHome)
+                "Sources" -> push(Screen.Sources)
                 "Settings" -> push(Screen.Settings)
                 "Now Playing" -> push(Screen.NowPlaying)
+            }
+            Screen.Sources -> when (i) {
+                0 -> showNotice("Already playing music from this phone")
+                1 -> showNotice("Subsonic isn't built yet")
+                2 -> push(Screen.SpotifyHome)
+                else -> showNotice("Later")
             }
             Screen.SpotifyHome -> when (spotifyHomeItems().getOrNull(i)) {
                 "Sign in with Spotify" -> spotifyAuth.startLogin()
@@ -577,9 +566,7 @@ class DetentController(val appContext: android.content.Context, val player: Play
                 }
                 "Sign out" -> {
                     spotifyAuth.signOut()
-                    engine.forgetLogin()
-                    stopPolling()
-                    spotifyNow = null
+                    remote.disconnect()
                     if (source == Source.Spotify) source = Source.None
                     spotifySignedIn = false
                     playlists.value = SpotifyList()
@@ -599,14 +586,15 @@ class DetentController(val appContext: android.content.Context, val player: Play
                 push(Screen.SpotifyAlbumTracks(a.id, a.name))
             }
             is Screen.SpotifyPlaylistTracks -> playlistTracks[screen.id]?.items?.getOrNull(i)?.let {
-                playSpotify(contextUri = "spotify:playlist:${screen.id}", uris = null, offsetUri = it.uri)
+                // The playlist's own position of this song (some entries, like podcasts, are skipped in our list).
+                playSpotify("spotify:playlist:${screen.id}", startIndex = it.position.takeIf { p -> p >= 0 } ?: i)
             }
             is Screen.SpotifyAlbumTracks -> albumTracks[screen.id]?.items?.getOrNull(i)?.let {
-                playSpotify(contextUri = "spotify:album:${screen.id}", uris = null, offsetUri = it.uri)
+                playSpotify("spotify:album:${screen.id}", startIndex = i)
             }
             Screen.SpotifyLiked -> liked.value.items.let { all ->
-                // The Web API takes at most 100 tracks at a time, so queue the selected song and the ones after it.
-                if (i in all.indices) playSpotify(contextUri = null, uris = all.drop(i).take(100).map { it.uri }, offsetUri = null)
+                // Liked Songs has no playlist address to jump into, so play the song and queue the next few behind it.
+                if (i in all.indices) playSpotify(all[i].uri, queueAfter = all.drop(i + 1).take(30).map { it.uri })
             }
             Screen.Settings -> {
                 if (i == 0) shuffle = !shuffle else repeat = RepeatSetting.entries[(repeat.ordinal + 1) % RepeatSetting.entries.size]

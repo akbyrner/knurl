@@ -24,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.detent.data.Album
 import kotlin.math.abs
@@ -47,7 +48,7 @@ fun AlbumFlow(
 
     Column(modifier.background(Color.Black)) {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val cover = minOf(maxWidth * 0.50f, maxHeight * 0.62f)
+            val cover = minOf(maxWidth * 0.64f, maxHeight * 0.80f)
             val p = position.value
             val first = max(0, floor(p - VISIBLE).toInt())
             val last = min(albums.lastIndex, ceil(p + VISIBLE).toInt())
@@ -71,13 +72,14 @@ fun AlbumFlow(
                 color = Color.White,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
+                letterSpacing = (-0.01).em,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
             Text(
                 current?.artist.orEmpty(),
-                color = Color(0xFFB0B0B0),
+                color = TEXT_SECONDARY,
                 fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -97,7 +99,7 @@ private fun FlowItem(album: Album, offset: Float, cover: Dp) {
     val a = abs(offset)
     val sign = if (offset < 0) -1f else 1f
     // first neighbour sits well clear of the centre cover, the rest stack tightly
-    val x = sign * (min(a, 1f) * coverPx * 0.78f + max(a - 1f, 0f) * coverPx * 0.16f)
+    val x = sign * (min(a, 1f) * coverPx * 0.66f + max(a - 1f, 0f) * coverPx * 0.16f)
     val angle = -(offset.coerceIn(-1f, 1f)) * TILT_DEGREES
     val scale = 1f - min(a, 1f) * 0.12f
 
@@ -113,6 +115,6 @@ private fun FlowItem(album: Album, offset: Float, cover: Dp) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        ArtWithReflection(album, cover)
+        ArtWithReflection(album, cover, corner = 8.dp, reflectionHeight = cover * 0.48f, mirrorAlpha = 0.34f)
     }
 }

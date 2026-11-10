@@ -19,6 +19,8 @@ data class SpotifyTrack(
     val albumName: String,
     val durationMs: Long,
     val imageUrl: String?,
+    /** Position inside the playlist it came from, or -1. Used to jump to the song inside the playlist. */
+    val position: Int = -1,
 )
 
 data class SpotifyDevice(val id: String, val name: String, val isActive: Boolean)
@@ -56,7 +58,9 @@ class SpotifyApi(private val auth: SpotifyAuth) {
         } catch (e: SpotifyException) {
             if (e.message?.startsWith("HTTP 404") == true) pages("/v1/playlists/$id/items?limit=100") else throw e
         }
-        return items.mapNotNull { trackFrom(it.optJSONObject("track") ?: it.optJSONObject("item")) }
+        return items.withIndex().mapNotNull { (index, entry) ->
+            trackFrom(entry.optJSONObject("track") ?: entry.optJSONObject("item"))?.copy(position = index)
+        }
     }
 
     // --- Playback control: tells Spotify what the Detent device should play --------------------------------

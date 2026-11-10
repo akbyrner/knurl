@@ -1,6 +1,9 @@
 package app.detent.ui
 
+import android.os.Build
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -23,20 +26,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 private val TRACK = Color.White.copy(alpha = 0.18f)
-private val FILL = Brush.verticalGradient(listOf(Color(0xFF4A95EA), Color(0xFF2A73D6)))
 
-/** The album and its reflection on the black plane, track info, and a progress bar that turns into a volume bar. */
+/** The cover and its reflection on the black plane, song details with a small symbol each, and a thin progress bar. */
 @Composable
 fun NowPlayingScreen(
     controller: DetentController,
@@ -68,56 +80,77 @@ fun NowPlayingScreen(
         }
     }
 
-    BoxWithConstraints(modifier.background(Color.Black)) {
-        val art = minOf(maxWidth * 0.58f, maxHeight * 0.44f)
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (album != null) {
-                ArtWithReflection(album, art, reflectionFraction = 0.4f)
-            } else {
-                Box(Modifier.height(art))
-            }
-            Column(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    info?.title ?: "Nothing playing",
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-                if (info != null) {
-                    Text(info.artist, color = Color(0xFFC9C9C9), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(info.albumTitle, color = Color(0xFFA0A0A8), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-            Box(Modifier.weight(1f))
-            if (showVolume) {
-                Bar(player.volume)
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
-                    Text("Volume", color = Color(0xFFB0B0B0), fontSize = 13.sp)
-                }
-            } else {
-                val duration = info?.durationMs ?: 0L
-                val position = info?.positionMs ?: 0L
-                val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-                Bar(fraction, knob = mode == NowPlayingMode.Scrub)
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
-                    val timeColor = if (mode == NowPlayingMode.Scrub) Color.White else Color(0xFFB0B0B0)
-                    Text(formatTime(position), color = timeColor, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    if (mode == NowPlayingMode.Scrub) {
-                        Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+    Column(modifier.background(Color.Black)) {
+        ScreenHeader("Now Playing", left = { PlayPauseGlyph(playing = info?.isPlaying == true, color = GLYPH) })
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val art = minOf(maxWidth * 0.79f, maxHeight * 0.56f)
+            Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.padding(top = 4.dp), contentAlignment = Alignment.TopCenter) {
+                    if (album != null) {
+                        // A soft glow from the cover's own colours, behind it. Needs Android 12 for the blur.
+                        if (Build.VERSION.SDK_INT >= 31) {
+                            Art(
+                                album,
+                                Modifier.padding(top = art * 0.1f).size(art * 0.8f, art * 0.7f).alpha(0.45f).blur(56.dp).clip(CircleShape),
+                            )
+                        }
+                        ArtWithReflection(album, art, corner = 10.dp, reflectionHeight = art * 0.135f, mirrorAlpha = 0.30f)
+                    } else {
+                        Box(Modifier.size(art))
                     }
-                    Text(
-                        "-" + formatTime(duration - position),
-                        color = timeColor,
-                        fontSize = 13.sp,
-                        modifier = if (mode == NowPlayingMode.Scrub) Modifier.weight(1f) else Modifier,
-                        textAlign = TextAlign.End,
-                    )
+                }
+                Spacer6()
+                if (info != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        InfoRow(InfoKind.Song) {
+                            Text(info.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).em, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        InfoRow(InfoKind.Artist) {
+                            Text(info.artist, color = Color(0xFFC9C9C9), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        InfoRow(InfoKind.Album) {
+                            Text(
+                                buildAnnotatedString {
+                                    append(info.albumTitle)
+                                    info.trackOf?.let { withStyle(SpanStyle(color = TEXT_TERTIARY)) { append(" · $it") } }
+                                },
+                                color = Color(0xFFC9C9C9),
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                } else {
+                    Text("Nothing playing", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Box(Modifier.weight(1f))
+                if (showVolume) {
+                    Bar(player.volume)
+                    Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)) {
+                        Text("Volume", color = TEXT_SECONDARY, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                } else {
+                    val duration = info?.durationMs ?: 0L
+                    val position = info?.positionMs ?: 0L
+                    val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
+                    val scrubbing = mode == NowPlayingMode.Scrub
+                    Bar(fraction)
+                    Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)) {
+                        val timeColor = if (scrubbing) Color.White else TEXT_SECONDARY
+                        Text(formatTime(position), color = timeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        if (scrubbing) {
+                            Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                        }
+                        Text(
+                            "-" + formatTime(duration - position),
+                            color = timeColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = if (scrubbing) Modifier.weight(1f) else Modifier,
+                            textAlign = TextAlign.End,
+                        )
+                    }
                 }
             }
         }
@@ -125,22 +158,59 @@ fun NowPlayingScreen(
 }
 
 @Composable
-private fun Bar(fraction: Float, knob: Boolean = false) {
+private fun Spacer6() = Box(Modifier.height(8.dp))
+
+private enum class InfoKind { Song, Artist, Album }
+
+@Composable
+private fun InfoRow(kind: InfoKind, content: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Canvas(Modifier.size(16.dp)) {
+            val u = size.width / 16f
+            val stroke = Stroke(1.6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            when (kind) {
+                InfoKind.Song -> {
+                    drawPath(
+                        Path().apply {
+                            moveTo(6 * u, 13 * u); lineTo(6 * u, 3.2f * u); lineTo(14 * u, 1.6f * u); lineTo(14 * u, 11.5f * u)
+                        },
+                        TEXT_TERTIARY,
+                        style = stroke,
+                    )
+                    drawCircle(TEXT_TERTIARY, 2 * u, Offset(4 * u, 13 * u))
+                    drawCircle(TEXT_TERTIARY, 2 * u, Offset(12 * u, 11.5f * u))
+                }
+                InfoKind.Artist -> {
+                    drawCircle(TEXT_TERTIARY, 2.9f * u, Offset(8 * u, 5.3f * u), style = stroke)
+                    drawPath(
+                        Path().apply {
+                            moveTo(2.6f * u, 14.6f * u)
+                            cubicTo(3.4f * u, 11.6f * u, 5.5f * u, 10.1f * u, 8 * u, 10.1f * u)
+                            cubicTo(10.5f * u, 10.1f * u, 12.6f * u, 11.6f * u, 13.4f * u, 14.6f * u)
+                        },
+                        TEXT_TERTIARY,
+                        style = stroke,
+                    )
+                }
+                InfoKind.Album -> {
+                    drawCircle(TEXT_TERTIARY, 6.4f * u, Offset(8 * u, 8 * u), style = stroke)
+                    drawCircle(TEXT_TERTIARY, 1.7f * u, Offset(8 * u, 8 * u))
+                }
+            }
+        }
+        Box(Modifier.size(10.dp, 1.dp))
+        content()
+    }
+}
+
+/** A thin bar with a round knob, used for both progress and volume. */
+@Composable
+private fun Bar(fraction: Float) {
     val f = fraction.coerceIn(0f, 1f)
-    BoxWithConstraints(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
-        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(TRACK)) {
-            Box(Modifier.fillMaxWidth(f).height(8.dp).background(FILL))
+    BoxWithConstraints(Modifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(TRACK)) {
+            Box(Modifier.fillMaxWidth(f).height(4.dp).background(Color.White))
         }
-        if (knob) {
-            // Centre the knob on the end of the fill, but keep it inside the bar.
-            val size = 14.dp
-            Box(
-                Modifier
-                    .offset(x = ((maxWidth - size) * f))
-                    .size(size)
-                    .clip(CircleShape)
-                    .background(Color.White),
-            )
-        }
+        Box(Modifier.offset(x = (maxWidth - 12.dp) * f).size(12.dp).clip(CircleShape).background(Color.White))
     }
 }

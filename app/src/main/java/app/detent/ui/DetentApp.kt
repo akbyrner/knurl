@@ -50,7 +50,15 @@ fun DetentApp(controller: DetentController) {
                 Screen.NowPlaying -> NowPlayingScreen(controller, controller.nowPlayingMode, screenModifier)
                 else -> {
                     val model = controller.listModel(screen)
-                    if (model != null) ListScreen(model, entry.selected, screenModifier) else Box(screenModifier)
+                    if (model != null) {
+                        // Menus keep a small "now playing" card above the wheel while something plays.
+                        Column(screenModifier) {
+                            ListScreen(model, entry.selected, Modifier.weight(1f))
+                            if (controller.hasNowPlaying) MiniPlayer(controller, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                        }
+                    } else {
+                        Box(screenModifier)
+                    }
                 }
             }
 
@@ -60,10 +68,6 @@ fun DetentApp(controller: DetentController) {
             ) {
                 ClickWheel(
                     modifier = Modifier.size(wheel),
-                    ringColor = WHEEL,
-                    labelColor = LABEL,
-                    centerColor = HUB,
-                    rimColor = RIM,
                     onTick = { dir ->
                         if (controller.tick(dir)) haptics.tick()
                     },
@@ -94,7 +98,3 @@ fun DetentApp(controller: DetentController) {
 }
 
 private val PLANE = Color.Black
-private val WHEEL = Color(0xFF232325)
-private val HUB = Color(0xFF131315)
-private val LABEL = Color(0xFFC4C4C4)
-private val RIM = Color.White.copy(alpha = 0.10f)

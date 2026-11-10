@@ -21,8 +21,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
-        // The bundled librespot binary is arm64 only.
-        ndk { abiFilters += "arm64-v8a" }
         // Public identifier of the Spotify app registration. Not a secret; the sign-in uses PKCE, so no client secret is needed or shipped.
         buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"${localProps.getProperty("spotify.clientId", "")}\"")
     }
@@ -44,10 +42,6 @@ android {
         compose = true
         buildConfig = true
     }
-    packaging {
-        // librespot is an executable shipped as a .so; it has to be unpacked to nativeLibraryDir to be run.
-        jniLibs { useLegacyPackaging = true }
-    }
 }
 
 dependencies {
@@ -60,4 +54,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-session:1.5.1")
+    // Spotify's App Remote library (remote control of the official Spotify app), downloaded from
+    // github.com/spotify/android-sdk. It needs gson.
+    implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
+    implementation("com.google.code.gson:gson:2.10.1")
 }
