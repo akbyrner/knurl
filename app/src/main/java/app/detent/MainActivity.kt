@@ -18,14 +18,13 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import app.detent.data.loadLibrary
-import app.detent.playback.PlayerController
 import app.detent.ui.DetentApp
 import app.detent.ui.DetentController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
-    private val controller by lazy { DetentController(applicationContext, PlayerController(applicationContext)) }
+    private val controller: DetentController get() = (application as DetentApplication).controller
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

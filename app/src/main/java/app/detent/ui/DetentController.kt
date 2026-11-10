@@ -192,28 +192,43 @@ class DetentController(val appContext: android.content.Context, val player: Play
      * Detent device to show up in the account, then asks Spotify to play there.
      */
     private fun playSpotify(contextUri: String?, uris: List<String>?, offsetUri: String?) {
+        // A second Select while the first is still signing in or finding the device would start a second attempt.
+        if (spotifyStarting) return
+        spotifyStarting = true
         scope.launch {
+            try {
+                startSpotifyPlayback(contextUri, uris, offsetUri)
+            } finally {
+                spotifyStarting = false
+            }
+        }
+    }
+
+    private var spotifyStarting = false
+
+    private suspend fun startSpotifyPlayback(contextUri: String?, uris: List<String>?, offsetUri: String?) {
+        run {
             if (!engine.available) {
                 showNotice("This build has no Spotify player")
-                return@launch
+                return@run
             }
             player.pause()
             val coldStart = engine.status != LibrespotEngine.Status.Authenticated
             if (coldStart) showNotice(if (engine.status == LibrespotEngine.Status.Stopped) "Starting Spotify player…" else "Waiting for Spotify sign-in…")
             if (!engine.ensureAuthenticated()) {
                 showNotice(engine.detail ?: "Spotify sign-in didn't finish")
-                return@launch
+                return@run
             }
             val device = findDetentDevice()
             if (device == null) {
                 showNotice("Detent didn't appear in your Spotify devices")
-                return@launch
+                return@run
             }
             try {
                 spotifyApi.play(device.id, contextUri, uris, offsetUri)
             } catch (e: SpotifyException) {
                 showNotice(e.message ?: "Spotify couldn't play that")
-                return@launch
+                return@run
             }
             source = Source.Spotify
             refreshSpotify(afterDelayMs = 700)

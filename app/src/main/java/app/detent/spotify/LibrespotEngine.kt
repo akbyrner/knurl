@@ -46,6 +46,7 @@ class LibrespotEngine(context: Context) {
         private set
 
     @Volatile private var process: Process? = null
+    @Volatile private var loginUrl: String? = null
     @Volatile private var stopping = false
 
     /** False when this build didn't include the librespot binary. */
@@ -53,7 +54,12 @@ class LibrespotEngine(context: Context) {
 
     fun start() {
         synchronized(this) {
-            if (process?.isAlive == true) return
+            if (process?.isAlive == true) {
+                // Already running. If it is still waiting for the person to sign in, show the same page again
+                // instead of starting a second player, which would fight over the sign-in port.
+                if (status == Status.NeedsLogin) loginUrl?.let { openBrowser(it) }
+                return
+            }
             if (!available) {
                 fail("Spotify player isn't included in this build")
                 return
@@ -91,13 +97,14 @@ class LibrespotEngine(context: Context) {
                 return
             }
             process = proc
-            if (signedInBefore) status = Status.Starting
 
             thread(name = "librespot-out", isDaemon = true) { readOutput(proc) }
             thread(name = "librespot-log", isDaemon = true) { readLog(proc, signedInBefore) }
             thread(name = "librespot-audio", isDaemon = true) { pumpAudio(proc) }
             thread(name = "librespot-wait", isDaemon = true) {
                 val code = proc.waitFor()
+                // A newer process may already have replaced this one; then this exit is none of its business.
+                if (process !== proc) return@thread
                 if (!stopping) {
                     // A saved login that no longer works means the person has to sign in again.
                     if (signedInBefore && status != Status.Authenticated) credentials.delete()
@@ -153,10 +160,15 @@ class LibrespotEngine(context: Context) {
         proc.inputStream.bufferedReader().forEachLine { line ->
             if (line.startsWith("Browse to: ")) {
                 val url = line.removePrefix("Browse to: ").trim()
+                loginUrl = url
                 status = Status.NeedsLogin
-                appContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                openBrowser(url)
             }
         }
+    }
+
+    private fun openBrowser(url: String) {
+        appContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun readLog(proc: Process, signedInBefore: Boolean) {
@@ -167,6 +179,8 @@ class LibrespotEngine(context: Context) {
                     status = Status.Authenticated
                     detail = null
                 }
+                line.contains("Address already in use") -> fail("Another Spotify player is still running. Try again.")
+                line.contains("Failed to get Spotify access token") -> fail("Spotify sign-in failed. Try again.")
                 line.contains("Invalid credentials", ignoreCase = true) ||
                     line.contains("Authentication failed", ignoreCase = true) ||
                     line.contains("Bad credentials", ignoreCase = true) -> {
