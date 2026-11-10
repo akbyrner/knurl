@@ -14,6 +14,10 @@ data class Album(
     val artUri: Uri? = null,
     /** Cover art for albums that come from the internet (Spotify) instead of the phone. */
     val artUrl: String? = null,
+    /** For tiles that stand for a category rather than a record: a symbol drawn on the tile instead of a letter. */
+    val glyph: String? = null,
+    /** Fixed colour (0 to 360) for the tile when it has no cover. */
+    val hue: Float? = null,
 )
 
 data class Track(

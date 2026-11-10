@@ -27,7 +27,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 
-enum class ModeIcon { Shuffle, Repeat }
+enum class ModeIcon { Shuffle, Repeat, NowPlaying }
 
 private val DISC_TOP = Color(0xFF36363C)
 private val DISC_MID = Color(0xFF1F1F23)
@@ -55,6 +55,11 @@ private val REPEAT_PATHS: List<Path> by lazy {
         "M48 38v3a5 5 0 0 1-5 5H25",
         "M29 42l-4.5 4 4.5 4",
     ).map { PathParser().parsePathString(it).toPath() }
+}
+
+// Three level bars, the "now playing" mark.
+private val NOW_PLAYING_PATHS: List<Path> by lazy {
+    listOf("M25 32v10", "M36 23v26", "M47 30v12").map { PathParser().parsePathString(it).toPath() }
 }
 
 /**
@@ -126,7 +131,11 @@ private fun DrawScope.drawModeButton(icon: ModeIcon, lit: Boolean, badge: String
         )
     }
 
-    val paths = if (icon == ModeIcon.Shuffle) SHUFFLE_PATHS else REPEAT_PATHS
+    val paths = when (icon) {
+        ModeIcon.Shuffle -> SHUFFLE_PATHS
+        ModeIcon.Repeat -> REPEAT_PATHS
+        ModeIcon.NowPlaying -> NOW_PLAYING_PATHS
+    }
     withTransform({ scale(k, k, pivot = Offset.Zero) }) {
         if (lit) {
             // Soft halo behind the lit icon.

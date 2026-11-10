@@ -83,8 +83,9 @@ fun NowPlayingScreen(
     Column(modifier.background(Color.Black)) {
         ScreenHeader("Now Playing", left = { PlayPauseGlyph(playing = info?.isPlaying == true, color = GLYPH) })
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val art = minOf(maxWidth * 0.79f, maxHeight * 0.56f)
-            Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // As in the design: the cover takes nearly the whole width (16dp margins), as tall as fits above the details.
+            val art = minOf(maxWidth - 32.dp, maxHeight - 130.dp)
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.padding(top = 4.dp), contentAlignment = Alignment.TopCenter) {
                     if (album != null) {
                         // A soft glow from the cover's own colours, behind it. Needs Android 12 for the blur.
@@ -94,14 +95,14 @@ fun NowPlayingScreen(
                                 Modifier.padding(top = art * 0.1f).size(art * 0.8f, art * 0.7f).alpha(0.45f).blur(56.dp).clip(CircleShape),
                             )
                         }
-                        ArtWithReflection(album, art, corner = 10.dp, reflectionHeight = art * 0.135f, mirrorAlpha = 0.30f)
+                        Art(album, Modifier.size(art), corner = 12.dp, letterSize = (art.value * 0.26f).sp)
                     } else {
                         Box(Modifier.size(art))
                     }
                 }
-                Spacer6()
+                Box(Modifier.weight(1f))
                 if (info != null) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         InfoRow(InfoKind.Song) {
                             Text(info.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).em, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
@@ -122,9 +123,10 @@ fun NowPlayingScreen(
                         }
                     }
                 } else {
-                    Text("Nothing playing", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Nothing playing", modifier = Modifier.padding(horizontal = 24.dp), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Box(Modifier.weight(1f))
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
                 if (showVolume) {
                     Bar(player.volume)
                     Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)) {
@@ -152,13 +154,11 @@ fun NowPlayingScreen(
                         )
                     }
                 }
+                }
             }
         }
     }
 }
-
-@Composable
-private fun Spacer6() = Box(Modifier.height(8.dp))
 
 private enum class InfoKind { Song, Artist, Album }
 

@@ -17,6 +17,7 @@ import app.detent.spotify.SpotifyApi
 import app.detent.spotify.SpotifyAuth
 import app.detent.spotify.SpotifyException
 import app.detent.spotify.SpotifyPlaylist
+import app.detent.spotify.SpotifyArtist
 import app.detent.spotify.SpotifyTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -35,6 +36,9 @@ sealed interface Screen {
     data object SpotifyLiked : Screen
     /** Saved Spotify albums, shown as the same Flow carousel as music on the phone. */
     data object SpotifyAlbumsFlow : Screen
+    data object SpotifyArtists : Screen
+    data class SpotifyArtistAlbums(val id: String, val name: String) : Screen
+    data object SpotifyRecent : Screen
     data class SpotifyAlbumTracks(val id: String, val name: String) : Screen
     data object Albums : Screen
     data object Artists : Screen
@@ -146,7 +150,8 @@ class DetentController(
 
     private enum class Source { None, Local, Spotify }
 
-    private var source = Source.None
+    // Observable, so the menus and mini player redraw when the playing source changes.
+    private var source by mutableStateOf(Source.None)
 
     private var seekJob: Job? = null
 
@@ -208,6 +213,7 @@ class DetentController(
     private fun playLocal(tracks: List<app.detent.data.Track>, startIndex: Int) {
         if (source == Source.Spotify) remote.pause()
         source = Source.Local
+        prefs.edit().putString("lastSource", "local").apply()
         player.playQueue(tracks, startIndex)
     }
 
@@ -232,10 +238,27 @@ class DetentController(
                 // Spotify forgets shuffle and repeat when a new playlist starts, so set them again afterwards.
                 remote.play(uri, startIndex, queueAfter, onStarted = { pushModesToSpotify() })
                 source = Source.Spotify
+                prefs.edit().putString("lastSource", "spotify").apply()
                 if (current.screen != Screen.NowPlaying) push(Screen.NowPlaying)
             } finally {
                 spotifyStarting = false
             }
+        }
+    }
+
+    /**
+     * Called each time the app comes to the front. If the last thing played came from the Spotify app, which keeps
+     * playing after Detent is closed, reconnect to it so Now Playing shows what it is doing. When the phone's own
+     * player was last, nothing is needed: its service keeps the queue.
+     */
+    fun restoreSession() {
+        val wantSpotify = source == Source.Spotify ||
+            (source == Source.None && player.currentTrackId == null && prefs.getString("lastSource", null) == "spotify")
+        if (!wantSpotify || remote.connected || !spotifyAuth.signedIn || !remote.installed || spotifyStarting) return
+        scope.launch {
+            // Quiet: no notice if the Spotify app isn't reachable, the Now Playing entry just won't appear.
+            val ok = remote.ensureConnected(10_000)
+            if (ok && source == Source.None && player.currentTrackId == null) source = Source.Spotify
         }
     }
 
@@ -295,13 +318,90 @@ class DetentController(
     private val playlistTracks = mutableStateMapOf<String, SpotifyList<SpotifyTrack>>()
     private val albumTracks = mutableStateMapOf<String, SpotifyList<SpotifyTrack>>()
 
-    /** Saved Spotify albums in the shape Flow draws. Index matches [spotifyAlbums]. */
-    val spotifyFlowAlbums: List<Album>
-        get() = spotifyAlbums.value.items.map {
-            Album(id = it.id.hashCode().toLong() or SPOTIFY_ID_BIT, title = it.name, artist = it.artist, artUrl = it.imageUrl)
-        }
+    private val artists = mutableStateOf(SpotifyList<SpotifyArtist>())
+    private val recent = mutableStateOf(SpotifyList<SpotifyAlbum>())
+    private val artistAlbums = mutableStateMapOf<String, SpotifyList<SpotifyAlbum>>()
 
-    val spotifyAlbumsEmptyText: String get() = spotifyAlbums.value.emptyText
+    /** Every Spotify album listed so far, so its tracks screen can show the cover whichever list it came from. */
+    private val albumInfo = mutableMapOf<String, SpotifyAlbum>()
+
+    private class HomeTile(val title: String, val subtitle: String, val glyph: String, val hue: Float)
+
+    /** The Spotify home carousel: one tile per part of the library. */
+    private val homeTiles = listOf(
+        HomeTile("Liked Songs", "Songs you've liked", "♥", 285f),
+        HomeTile("Playlists", "Your playlists", "♫", 205f),
+        HomeTile("Albums", "Saved albums", "◉", 160f),
+        HomeTile("Artists", "Artists you follow", "★", 35f),
+        HomeTile("Recently Played", "Jump back in", "↻", 345f),
+    )
+
+    private fun homeAlbum(t: HomeTile) =
+        Album(id = t.title.hashCode().toLong() or SPOTIFY_ID_BIT, title = t.title, artist = t.subtitle, glyph = t.glyph, hue = t.hue)
+
+    private fun spotifyTile(id: String, title: String, subtitle: String, imageUrl: String?) =
+        Album(id = id.hashCode().toLong() or SPOTIFY_ID_BIT, title = title, artist = subtitle, artUrl = imageUrl)
+
+    /** Screens drawn as the Flow carousel: the phone's albums and most Spotify browsing. */
+    fun isFlowScreen(screen: Screen): Boolean = when (screen) {
+        Screen.Flow, Screen.SpotifyAlbumsFlow, Screen.SpotifyPlaylists, Screen.SpotifyArtists, Screen.SpotifyRecent,
+        is Screen.SpotifyArtistAlbums -> true
+        Screen.SpotifyHome -> spotifyAuth.configured && spotifySignedIn
+        else -> false
+    }
+
+    /** The albums behind a Spotify Flow screen that shows albums. */
+    private fun spotifyAlbumList(screen: Screen): SpotifyList<SpotifyAlbum>? = when (screen) {
+        Screen.SpotifyAlbumsFlow -> spotifyAlbums.value
+        Screen.SpotifyRecent -> recent.value
+        is Screen.SpotifyArtistAlbums -> artistAlbums[screen.id] ?: SpotifyList(loading = true)
+        else -> null
+    }
+
+    /** The tiles a Flow screen draws; the selected index counts into this list. */
+    fun flowTiles(screen: Screen): List<Album> = when (screen) {
+        Screen.Flow -> library.albums
+        Screen.SpotifyHome -> homeTiles.map { homeAlbum(it) }
+        Screen.SpotifyPlaylists -> playlists.value.items.map { spotifyTile(it.id, it.name, "${it.trackCount} songs", it.imageUrl) }
+        Screen.SpotifyArtists -> artists.value.items.map { spotifyTile(it.id, it.name, "Artist", it.imageUrl) }
+        else -> spotifyAlbumList(screen)?.items?.map { spotifyTile(it.id, it.name, it.artist, it.imageUrl) }.orEmpty()
+    }
+
+    /** What to say instead of a carousel while it is empty, loading or failed. */
+    fun flowEmptyText(screen: Screen): String = when (screen) {
+        Screen.Flow -> "No music found"
+        Screen.SpotifyPlaylists -> playlists.value.emptyText
+        Screen.SpotifyArtists -> artists.value.emptyText
+        else -> spotifyAlbumList(screen)?.emptyText ?: "Nothing here yet"
+    }
+
+    fun flowTitle(screen: Screen): String = when (screen) {
+        Screen.SpotifyPlaylists -> "Playlists"
+        Screen.SpotifyArtists -> "Artists"
+        Screen.SpotifyRecent -> "Recently Played"
+        Screen.SpotifyAlbumsFlow -> "Albums"
+        is Screen.SpotifyArtistAlbums -> screen.name
+        Screen.SpotifyHome -> "Spotify"
+        else -> "Flow"
+    }
+
+    private fun signOutSpotify() {
+        spotifyAuth.signOut()
+        prefs.edit().remove("lastSource").apply()
+        remote.disconnect()
+        if (source == Source.Spotify) source = Source.None
+        spotifySignedIn = false
+        playlists.value = SpotifyList()
+        liked.value = SpotifyList()
+        spotifyAlbums.value = SpotifyList()
+        artists.value = SpotifyList()
+        recent.value = SpotifyList()
+        artistAlbums.clear()
+        playlistTracks.clear()
+        albumTracks.clear()
+        albumInfo.clear()
+        showNotice("Signed out of Spotify")
+    }
 
     fun showNotice(text: String) {
         notice = text
@@ -344,13 +444,22 @@ class DetentController(
     private fun spotifyHomeItems(): List<String> = when {
         !spotifyAuth.configured -> listOf("Spotify isn't set up")
         !spotifySignedIn -> listOf("Sign in with Spotify")
-        else -> listOf("Playlists", "Liked Songs", "Albums", "Sign out")
+        else -> homeTiles.map { it.title }
     }
 
-    private fun isFlow(screen: Screen) = screen == Screen.Flow || screen == Screen.SpotifyAlbumsFlow
+    private fun spotifyTrackModel(title: String, list: SpotifyList<SpotifyTrack>, header: ListHeader? = null) = list.items.let { tracks ->
+        ListModel(title, tracks.size, { tracks[it].title }, { tracks[it].artist }, chevron = false, emptyText = list.emptyText, header = header)
+    }
 
-    private fun spotifyTrackModel(title: String, list: SpotifyList<SpotifyTrack>) = list.items.let { tracks ->
-        ListModel(title, tracks.size, { tracks[it].title }, { tracks[it].artist }, chevron = false, emptyText = list.emptyText)
+    /** The Now Playing button in the wheel's corner: opens Now Playing, or goes back from it. Returns true when something changed. */
+    fun toggleNowPlaying(): Boolean {
+        if (current.screen == Screen.NowPlaying) return back()
+        if (!hasNowPlaying) {
+            showNotice("Nothing is playing")
+            return false
+        }
+        push(Screen.NowPlaying)
+        return true
     }
 
     /** The shuffle button beside the wheel. */
@@ -393,7 +502,8 @@ class DetentController(
         if (hasNowPlaying) add("Now Playing")
     }
 
-    private val settingsItems = listOf("Shuffle", "Repeat")
+    private val settingsItems: List<String>
+        get() = listOf("Shuffle", "Repeat") + if (spotifySignedIn) listOf("Sign out of Spotify") else emptyList()
 
     /** Where music can come from: a title and a one-line description each. */
     private val sourceItems = listOf(
@@ -438,7 +548,8 @@ class DetentController(
             valueAt = {
                 when (it) {
                     0 -> if (shuffle) "On" else "Off"
-                    else -> repeat.label
+                    1 -> repeat.label
+                    else -> ""
                 }
             },
         )
@@ -454,23 +565,27 @@ class DetentController(
         Screen.SpotifyHome -> spotifyHomeItems().let { items ->
             ListModel("Spotify", items.size, { items[it] }, chevron = items.size > 1)
         }
-        Screen.SpotifyPlaylists -> playlists.value.let { list ->
-            ListModel(
-                "Playlists",
-                list.items.size,
-                { list.items[it].name },
-                { "${list.items[it].trackCount} songs" },
-                emptyText = list.emptyText,
+        is Screen.SpotifyPlaylistTracks -> {
+            val playlist = playlists.value.items.firstOrNull { it.id == screen.id }
+            val tracks = playlistTracks[screen.id] ?: SpotifyList(loading = true)
+            spotifyTrackModel(
+                screen.name,
+                tracks,
+                ListHeader(
+                    screen.name,
+                    if (tracks.loading) "" else "${tracks.items.size} songs",
+                    playlist?.let { spotifyTile(it.id, it.name, "", it.imageUrl) },
+                ),
             )
         }
-        is Screen.SpotifyPlaylistTracks ->
-            spotifyTrackModel(screen.name, playlistTracks[screen.id] ?: SpotifyList(loading = true))
-        Screen.SpotifyLiked -> spotifyTrackModel("Liked Songs", liked.value)
+        Screen.SpotifyLiked -> spotifyTrackModel(
+            "Liked Songs",
+            liked.value,
+            ListHeader("Liked Songs", if (liked.value.loading) "" else "${liked.value.items.size} songs", homeAlbum(homeTiles[0])),
+        )
         is Screen.SpotifyAlbumTracks -> {
-            val album = spotifyAlbums.value.items.firstOrNull { it.id == screen.id }
-            val flowAlbum = album?.let {
-                Album(id = it.id.hashCode().toLong() or SPOTIFY_ID_BIT, title = it.name, artist = it.artist, artUrl = it.imageUrl)
-            }
+            val album = albumInfo[screen.id]
+            val flowAlbum = album?.let { spotifyTile(it.id, it.name, it.artist, it.imageUrl) }
             val list = albumTracks[screen.id] ?: SpotifyList(loading = true)
             list.items.let { tracks ->
                 ListModel(
@@ -484,14 +599,13 @@ class DetentController(
                 )
             }
         }
-        Screen.Flow, Screen.SpotifyAlbumsFlow, Screen.NowPlaying -> null
+        Screen.Flow, Screen.SpotifyAlbumsFlow, Screen.SpotifyPlaylists, Screen.SpotifyArtists, Screen.SpotifyRecent,
+        is Screen.SpotifyArtistAlbums, Screen.NowPlaying -> null
     }
 
     private fun rowCount(screen: Screen): Int = when (screen) {
-        Screen.Flow -> library.albums.size
-        Screen.SpotifyAlbumsFlow -> spotifyAlbums.value.items.size
         Screen.NowPlaying -> 0
-        else -> listModel(screen)?.count ?: 0
+        else -> if (isFlowScreen(screen)) flowTiles(screen).size else listModel(screen)?.count ?: 0
     }
 
     private fun push(screen: Screen) {
@@ -527,8 +641,8 @@ class DetentController(
             WheelButton.Menu -> return back()
             WheelButton.Select -> select()
             WheelButton.PlayPause -> togglePlayPause()
-            WheelButton.Next -> if (isFlow(current.screen)) setSelected(current.selected + 1) else skip(forward = true)
-            WheelButton.Prev -> if (isFlow(current.screen)) setSelected(current.selected - 1) else skip(forward = false)
+            WheelButton.Next -> if (isFlowScreen(current.screen)) setSelected(current.selected + 1) else skip(forward = true)
+            WheelButton.Prev -> if (isFlowScreen(current.screen)) setSelected(current.selected - 1) else skip(forward = false)
         }
         return true
     }
@@ -591,26 +705,28 @@ class DetentController(
                     load(spotifyAlbums) { spotifyApi.savedAlbums() }
                     push(Screen.SpotifyAlbumsFlow)
                 }
-                "Sign out" -> {
-                    spotifyAuth.signOut()
-                    remote.disconnect()
-                    if (source == Source.Spotify) source = Source.None
-                    spotifySignedIn = false
-                    playlists.value = SpotifyList()
-                    liked.value = SpotifyList()
-                    spotifyAlbums.value = SpotifyList()
-                    playlistTracks.clear()
-                    albumTracks.clear()
-                    showNotice("Signed out of Spotify")
+                "Artists" -> {
+                    load(artists) { spotifyApi.followedArtists() }
+                    push(Screen.SpotifyArtists)
+                }
+                "Recently Played" -> {
+                    load(recent) { spotifyApi.recentAlbums() }
+                    push(Screen.SpotifyRecent)
                 }
             }
             Screen.SpotifyPlaylists -> playlists.value.items.getOrNull(i)?.let { p ->
                 loadKeyed(playlistTracks, p.id) { spotifyApi.playlistTracks(p.id) }
                 push(Screen.SpotifyPlaylistTracks(p.id, p.name))
             }
-            Screen.SpotifyAlbumsFlow -> spotifyAlbums.value.items.getOrNull(i)?.let { a ->
-                loadKeyed(albumTracks, a.id) { spotifyApi.albumTracks(a) }
-                push(Screen.SpotifyAlbumTracks(a.id, a.name))
+            Screen.SpotifyAlbumsFlow, Screen.SpotifyRecent, is Screen.SpotifyArtistAlbums ->
+                spotifyAlbumList(screen)?.items?.getOrNull(i)?.let { a ->
+                    albumInfo[a.id] = a
+                    loadKeyed(albumTracks, a.id) { spotifyApi.albumTracks(a) }
+                    push(Screen.SpotifyAlbumTracks(a.id, a.name))
+                }
+            Screen.SpotifyArtists -> artists.value.items.getOrNull(i)?.let { a ->
+                loadKeyed(artistAlbums, a.id) { spotifyApi.artistAlbums(a.id) }
+                push(Screen.SpotifyArtistAlbums(a.id, a.name))
             }
             is Screen.SpotifyPlaylistTracks -> playlistTracks[screen.id]?.items?.getOrNull(i)?.let {
                 // The playlist's own position of this song (some entries, like podcasts, are skipped in our list).
@@ -624,8 +740,11 @@ class DetentController(
                 if (i in all.indices) playSpotify(all[i].uri, queueAfter = all.drop(i + 1).take(30).map { it.uri })
             }
             Screen.Settings -> {
-                if (i == 0) shuffle = !shuffle else repeat = RepeatSetting.entries[(repeat.ordinal + 1) % RepeatSetting.entries.size]
-                applyModes()
+                when (i) {
+                    0 -> toggleShuffle()
+                    1 -> cycleRepeat()
+                    else -> signOutSpotify()
+                }
             }
             Screen.Flow -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
             Screen.Albums -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }

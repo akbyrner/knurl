@@ -41,6 +41,12 @@ class MainActivity : ComponentActivity() {
         if (hasFocus) hideSystemBars()
     }
 
+    // Coming back after the app was closed: pick up whatever the Spotify app is still playing.
+    override fun onResume() {
+        super.onResume()
+        controller.restoreSession()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleRedirect(intent)

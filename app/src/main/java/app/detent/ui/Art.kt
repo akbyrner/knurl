@@ -90,12 +90,12 @@ fun Art(album: Album, modifier: Modifier, corner: Dp = 0.dp, letterSize: TextUni
         Image(bmp, contentDescription = album.title, modifier = framed, contentScale = ContentScale.Crop)
     } else {
         // Deterministic colour from the album id so each placeholder is distinct and stable.
-        val h = ((album.id * 2654435761L) and 0xFFFF).toFloat() / 0xFFFF
+        val h = album.hue?.let { it / 360f } ?: (((album.id * 2654435761L) and 0xFFFF).toFloat() / 0xFFFF)
         val top = Color.hsv(h * 360f, 0.55f, 0.85f)
         val bottom = Color.hsv((h * 360f + 40f) % 360f, 0.70f, 0.45f)
         Box(framed.background(Brush.linearGradient(listOf(top, bottom))), contentAlignment = Alignment.Center) {
             Text(
-                album.title.take(1).uppercase(),
+                album.glyph ?: album.title.take(1).uppercase(),
                 color = Color.White.copy(alpha = 0.85f),
                 fontSize = letterSize,
                 fontWeight = FontWeight.Bold,

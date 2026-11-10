@@ -96,7 +96,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                 )
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), state = state, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            LazyColumn(Modifier.fillMaxWidth(), state = state, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(model.count) { i ->
                     val isSelected = i == selected
                     val dim = model.dimAt?.invoke(i) == true

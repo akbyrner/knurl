@@ -8,7 +8,9 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class SpotifyPlaylist(val id: String, val name: String, val trackCount: Int)
+data class SpotifyPlaylist(val id: String, val name: String, val trackCount: Int, val imageUrl: String? = null)
+
+data class SpotifyArtist(val id: String, val name: String, val imageUrl: String?)
 
 data class SpotifyAlbum(val id: String, val name: String, val artist: String, val imageUrl: String?, val trackCount: Int)
 
@@ -42,8 +44,46 @@ class SpotifyApi(private val auth: SpotifyAuth) {
                 // The track count has moved between "tracks" and "items" in Spotify's responses.
                 trackCount = p.optJSONObject("tracks")?.optInt("total")
                     ?: p.optJSONObject("items")?.optInt("total") ?: 0,
+                imageUrl = p.optJSONArray("images")?.optJSONObject(0)?.optString("url")?.takeIf { it.isNotEmpty() },
             )
         }
+
+    /** Artists the person follows. Spotify pages these with a cursor, under an "artists" key. */
+    suspend fun followedArtists(): List<SpotifyArtist> {
+        val out = mutableListOf<SpotifyArtist>()
+        var url: String? = "https://api.spotify.com/v1/me/following?type=artist&limit=50"
+        while (url != null && out.size < MAX_ITEMS) {
+            val artists = get(url).optJSONObject("artists") ?: break
+            val items = artists.optJSONArray("items") ?: JSONArray()
+            for (i in 0 until items.length()) {
+                val a = items.optJSONObject(i) ?: continue
+                val id = a.optString("id").takeIf { it.isNotEmpty() } ?: continue
+                out += SpotifyArtist(
+                    id,
+                    a.optString("name", "Artist"),
+                    a.optJSONArray("images")?.optJSONObject(0)?.optString("url")?.takeIf { it.isNotEmpty() },
+                )
+            }
+            url = artists.optString("next").takeIf { it.isNotEmpty() && it != "null" }
+        }
+        return out
+    }
+
+    /** An artist's albums and singles. */
+    suspend fun artistAlbums(artistId: String): List<SpotifyAlbum> =
+        pages("/v1/artists/$artistId/albums?include_groups=album,single&limit=50").mapNotNull { albumFrom(it) }
+
+    /** The albums of the songs played lately, newest first, each album once. */
+    suspend fun recentAlbums(): List<SpotifyAlbum> {
+        val items = get("https://api.spotify.com/v1/me/player/recently-played?limit=50").optJSONArray("items") ?: return emptyList()
+        val seen = HashSet<String>()
+        val out = mutableListOf<SpotifyAlbum>()
+        for (i in 0 until items.length()) {
+            val album = albumFrom(items.optJSONObject(i)?.optJSONObject("track")?.optJSONObject("album")) ?: continue
+            if (seen.add(album.id)) out += album
+        }
+        return out
+    }
 
     suspend fun likedSongs(): List<SpotifyTrack> =
         pages("/v1/me/tracks?limit=50").mapNotNull { trackFrom(it.optJSONObject("track")) }
