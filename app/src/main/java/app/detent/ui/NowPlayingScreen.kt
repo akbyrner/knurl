@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,7 +39,12 @@ private val FILL = Brush.verticalGradient(listOf(Color(0xFF4A95EA), Color(0xFF2A
 
 /** The album and its reflection on the black plane, track info, and a progress bar that turns into a volume bar. */
 @Composable
-fun NowPlayingScreen(library: Library, player: PlayerController, modifier: Modifier = Modifier) {
+fun NowPlayingScreen(
+    library: Library,
+    player: PlayerController,
+    mode: NowPlayingMode,
+    modifier: Modifier = Modifier,
+) {
     val track = player.currentTrackId?.let { library.track(it) }
     val album = track?.let { library.album(it.albumId) }
 
@@ -93,10 +101,20 @@ fun NowPlayingScreen(library: Library, player: PlayerController, modifier: Modif
             } else {
                 val duration = if (player.durationMs > 0) player.durationMs else track?.durationMs ?: 0L
                 val fraction = if (duration > 0) (player.positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f
-                Bar(fraction)
+                Bar(fraction, knob = mode == NowPlayingMode.Scrub)
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
-                    Text(formatTime(player.positionMs), color = Color(0xFFB0B0B0), fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    Text("-" + formatTime(duration - player.positionMs), color = Color(0xFFB0B0B0), fontSize = 13.sp)
+                    val timeColor = if (mode == NowPlayingMode.Scrub) Color.White else Color(0xFFB0B0B0)
+                    Text(formatTime(player.positionMs), color = timeColor, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (mode == NowPlayingMode.Scrub) {
+                        Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                    }
+                    Text(
+                        "-" + formatTime(duration - player.positionMs),
+                        color = timeColor,
+                        fontSize = 13.sp,
+                        modifier = if (mode == NowPlayingMode.Scrub) Modifier.weight(1f) else Modifier,
+                        textAlign = TextAlign.End,
+                    )
                 }
             }
         }
@@ -104,8 +122,22 @@ fun NowPlayingScreen(library: Library, player: PlayerController, modifier: Modif
 }
 
 @Composable
-private fun Bar(fraction: Float) {
-    Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(TRACK)) {
-        Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(8.dp).background(FILL))
+private fun Bar(fraction: Float, knob: Boolean = false) {
+    val f = fraction.coerceIn(0f, 1f)
+    BoxWithConstraints(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(TRACK)) {
+            Box(Modifier.fillMaxWidth(f).height(8.dp).background(FILL))
+        }
+        if (knob) {
+            // Centre the knob on the end of the fill, but keep it inside the bar.
+            val size = 14.dp
+            Box(
+                Modifier
+                    .offset(x = ((maxWidth - size) * f))
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color.White),
+            )
+        }
     }
 }

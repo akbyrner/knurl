@@ -17,6 +17,16 @@ sealed interface Screen {
     data class AlbumTracks(val albumId: Long) : Screen
     data object Songs : Screen
     data object NowPlaying : Screen
+    data object Settings : Screen
+}
+
+/** What the wheel does on Now Playing. Select switches between the two. */
+enum class NowPlayingMode { Volume, Scrub }
+
+enum class RepeatSetting(val label: String, val playerMode: Int) {
+    Off("Off", androidx.media3.common.Player.REPEAT_MODE_OFF),
+    All("All", androidx.media3.common.Player.REPEAT_MODE_ALL),
+    One("One", androidx.media3.common.Player.REPEAT_MODE_ONE),
 }
 
 /** One screen on the stack plus the highlighted row (or selected album, in Flow). */
@@ -29,6 +39,8 @@ class ListModel(
     val titleAt: (Int) -> String,
     val subtitleAt: ((Int) -> String)? = null,
     val chevron: Boolean = true,
+    /** Text shown on the right of a row, such as a setting's current value. Replaces the chevron. */
+    val valueAt: ((Int) -> String)? = null,
 )
 
 /**
@@ -38,6 +50,28 @@ class ListModel(
 class DetentController(val appContext: android.content.Context, val player: PlayerController) {
     var library by mutableStateOf(demoLibrary)
         private set
+
+    private val prefs = appContext.getSharedPreferences("detent", android.content.Context.MODE_PRIVATE)
+
+    var shuffle by mutableStateOf(prefs.getBoolean("shuffle", false))
+        private set
+
+    var repeat by mutableStateOf(
+        RepeatSetting.entries.getOrElse(prefs.getInt("repeat", 0)) { RepeatSetting.Off },
+    )
+        private set
+
+    var nowPlayingMode by mutableStateOf(NowPlayingMode.Volume)
+        private set
+
+    init {
+        player.setModes(shuffle, repeat.playerMode)
+    }
+
+    private fun applyModes() {
+        prefs.edit().putBoolean("shuffle", shuffle).putInt("repeat", repeat.ordinal).apply()
+        player.setModes(shuffle, repeat.playerMode)
+    }
 
     private val stack = mutableStateListOf(Entry(Screen.MainMenu, 0))
 
@@ -55,8 +89,11 @@ class DetentController(val appContext: android.content.Context, val player: Play
         add("Artists")
         add("Songs")
         add("Shuffle Songs")
+        add("Settings")
         if (player.currentTrackId != null) add("Now Playing")
     }
+
+    private val settingsItems = listOf("Shuffle", "Repeat")
 
     fun listModel(screen: Screen): ListModel? = when (screen) {
         Screen.MainMenu -> mainMenuItems().let { items ->
@@ -83,6 +120,17 @@ class DetentController(val appContext: android.content.Context, val player: Play
         Screen.Songs -> library.songs.let { songs ->
             ListModel("Songs", songs.size, { songs[it].title }, { songs[it].artist }, chevron = false)
         }
+        Screen.Settings -> ListModel(
+            "Settings",
+            settingsItems.size,
+            { settingsItems[it] },
+            valueAt = {
+                when (it) {
+                    0 -> if (shuffle) "On" else "Off"
+                    else -> repeat.label
+                }
+            },
+        )
         Screen.Flow, Screen.NowPlaying -> null
     }
 
@@ -93,6 +141,7 @@ class DetentController(val appContext: android.content.Context, val player: Play
     }
 
     private fun push(screen: Screen) {
+        if (screen == Screen.NowPlaying) nowPlayingMode = NowPlayingMode.Volume
         stack += Entry(screen, if (screen == Screen.Flow) library.albums.size / 2 else 0)
     }
 
@@ -107,7 +156,12 @@ class DetentController(val appContext: android.content.Context, val player: Play
     /** +1 clockwise, -1 counter-clockwise. Returns true when something changed, for the haptic tick. */
     fun tick(direction: Int): Boolean = when (current.screen) {
         Screen.NowPlaying -> {
-            player.stepVolume(direction)
+            if (nowPlayingMode == NowPlayingMode.Scrub) {
+                // About 60 ticks cover a whole song, between 1 and 10 seconds each.
+                player.seekBy(direction * (player.durationMs / 60).coerceIn(1_000L, 10_000L))
+            } else {
+                player.stepVolume(direction)
+            }
             true
         }
         else -> setSelected(current.selected + direction)
@@ -125,6 +179,11 @@ class DetentController(val appContext: android.content.Context, val player: Play
     }
 
     private fun back(): Boolean {
+        // Menu leaves scrubbing first, like the original, and only then goes back a screen.
+        if (current.screen == Screen.NowPlaying && nowPlayingMode == NowPlayingMode.Scrub) {
+            nowPlayingMode = NowPlayingMode.Volume
+            return true
+        }
         if (stack.size <= 1) return false
         stack.removeAt(stack.lastIndex)
         return true
@@ -145,7 +204,12 @@ class DetentController(val appContext: android.content.Context, val player: Play
                         push(Screen.NowPlaying)
                     }
                 }
+                "Settings" -> push(Screen.Settings)
                 "Now Playing" -> push(Screen.NowPlaying)
+            }
+            Screen.Settings -> {
+                if (i == 0) shuffle = !shuffle else repeat = RepeatSetting.entries[(repeat.ordinal + 1) % RepeatSetting.entries.size]
+                applyModes()
             }
             Screen.Flow -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
             Screen.Albums -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
@@ -163,7 +227,8 @@ class DetentController(val appContext: android.content.Context, val player: Play
                     push(Screen.NowPlaying)
                 }
             }
-            Screen.NowPlaying -> player.togglePlayPause()
+            Screen.NowPlaying -> nowPlayingMode =
+                if (nowPlayingMode == NowPlayingMode.Volume) NowPlayingMode.Scrub else NowPlayingMode.Volume
         }
     }
 }

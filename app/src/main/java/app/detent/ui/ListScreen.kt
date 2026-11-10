@@ -102,7 +102,14 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                                 )
                             }
                         }
-                        if (model.chevron) Chevron(if (i == selected) Color.White else CHEVRON)
+                        model.valueAt?.let { value ->
+                            Text(
+                                value(i),
+                                modifier = Modifier.padding(start = 12.dp),
+                                color = if (i == selected) Color.White else Color(0xFFA0A0A8),
+                                fontSize = 17.sp,
+                            )
+                        } ?: if (model.chevron) Chevron(if (i == selected) Color.White else CHEVRON) else Unit
                     }
                 }
             }

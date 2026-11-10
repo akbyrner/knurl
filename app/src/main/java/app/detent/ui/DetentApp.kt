@@ -34,7 +34,7 @@ fun DetentApp(controller: DetentController) {
             val screenModifier = Modifier.weight(1f).fillMaxWidth().statusBarsPadding()
             when (val screen = entry.screen) {
                 Screen.Flow -> AlbumFlow(controller.library.albums, entry.selected, screenModifier)
-                Screen.NowPlaying -> NowPlayingScreen(controller.library, controller.player, screenModifier)
+                Screen.NowPlaying -> NowPlayingScreen(controller.library, controller.player, controller.nowPlayingMode, screenModifier)
                 else -> {
                     val model = controller.listModel(screen)
                     if (model != null) ListScreen(model, entry.selected, screenModifier) else Box(screenModifier)

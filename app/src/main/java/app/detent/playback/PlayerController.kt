@@ -44,12 +44,17 @@ class PlayerController(context: Context) {
     var volumeChangedAt by mutableLongStateOf(0L)
         private set
 
+    private var shuffleEnabled = false
+    private var repeatMode = Player.REPEAT_MODE_OFF
+
     init {
         val token = SessionToken(appContext, ComponentName(appContext, PlaybackService::class.java))
         val future = MediaController.Builder(appContext, token).buildAsync()
         future.addListener({
             val c = future.get()
             controller = c
+            c.shuffleModeEnabled = shuffleEnabled
+            c.repeatMode = repeatMode
             c.addListener(listener)
             sync(c)
             waiting.forEach { it(c) }
@@ -84,6 +89,24 @@ class PlayerController(context: Context) {
             c.prepare()
             c.play()
         }
+    }
+
+    /** Shuffle and repeat ([Player.REPEAT_MODE_OFF], [Player.REPEAT_MODE_ALL] or [Player.REPEAT_MODE_ONE]). */
+    fun setModes(shuffle: Boolean, repeat: Int) {
+        shuffleEnabled = shuffle
+        repeatMode = repeat
+        withController { c ->
+            c.shuffleModeEnabled = shuffle
+            c.repeatMode = repeat
+        }
+    }
+
+    /** Moves the playhead by [deltaMs], staying inside the song. The position shows the new spot at once. */
+    fun seekBy(deltaMs: Long) = withController { c ->
+        val duration = if (c.duration != androidx.media3.common.C.TIME_UNSET) c.duration else durationMs
+        val target = (c.currentPosition + deltaMs).coerceIn(0L, maxOf(0L, duration - 1))
+        c.seekTo(target)
+        positionMs = target
     }
 
     fun togglePlayPause() = withController { c -> if (c.isPlaying) c.pause() else c.play() }
