@@ -12,6 +12,8 @@ data class Album(
     val title: String,
     val artist: String,
     val artUri: Uri? = null,
+    /** Cover art for albums that come from the internet (Spotify) instead of the phone. */
+    val artUrl: String? = null,
 )
 
 data class Track(
@@ -99,6 +101,21 @@ private fun buildLibrary(tracks: List<Track>, artUri: (Long) -> Uri?): Library {
     val orderedTracks = tracks.sortedWith(compareBy({ it.albumId }, { it.trackNumber }, { it.title.lowercase() }))
     return Library(albums, orderedTracks)
 }
+
+/** Downloads a cover image. Returns null on any failure so the tile falls back to its coloured placeholder. */
+fun loadArtFromUrl(url: String): Bitmap? =
+    try {
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        try {
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 15_000
+            if (conn.responseCode in 200..299) android.graphics.BitmapFactory.decodeStream(conn.inputStream) else null
+        } finally {
+            conn.disconnect()
+        }
+    } catch (_: Exception) {
+        null
+    }
 
 fun loadArt(resolver: ContentResolver, uri: Uri, px: Int): Bitmap? =
     try {

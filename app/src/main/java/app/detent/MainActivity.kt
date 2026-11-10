@@ -1,6 +1,7 @@
 package app.detent
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -26,9 +27,21 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private val controller by lazy { DetentController(applicationContext, PlayerController(applicationContext)) }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleRedirect(intent)
+    }
+
+    /** Spotify's login page sends the browser back as app.detent://spotify-callback?code=... */
+    private fun handleRedirect(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "app.detent" && data.host == "spotify-callback") controller.onAuthRedirect(data)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState == null) handleRedirect(intent)
         // The screen is black at the top, so the status bar needs light icons.
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import app.detent.data.Album
 import app.detent.data.loadArt
+import app.detent.data.loadArtFromUrl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -41,8 +42,11 @@ private fun rememberArt(album: Album): ImageBitmap? {
     val resolver = LocalContext.current.contentResolver
     return produceState(initialValue = ArtCache.lru.get(album.id), album.id) {
         val uri = album.artUri
-        if (value == null && uri != null && album.id !in ArtCache.missing) {
-            val bmp = withContext(Dispatchers.IO) { loadArt(resolver, uri, 512) }
+        val url = album.artUrl
+        if (value == null && (uri != null || url != null) && album.id !in ArtCache.missing) {
+            val bmp = withContext(Dispatchers.IO) {
+                if (url != null) loadArtFromUrl(url) else loadArt(resolver, uri!!, 512)
+            }
             if (bmp != null) {
                 val ib = bmp.asImageBitmap()
                 ArtCache.lru.put(album.id, ib)

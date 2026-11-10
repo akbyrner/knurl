@@ -68,7 +68,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
         }
         if (model.count == 0) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Nothing here yet", color = Color(0xFFA0A0A8), fontSize = 15.sp)
+                Text(model.emptyText, color = Color(0xFFA0A0A8), fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
             }
         } else {
             LazyColumn(Modifier.fillMaxSize(), state = state) {

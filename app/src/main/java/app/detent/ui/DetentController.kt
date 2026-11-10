@@ -1,16 +1,38 @@
 package app.detent.ui
 
+import android.net.Uri
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.detent.data.Album
 import app.detent.data.Library
 import app.detent.data.demoLibrary
 import app.detent.playback.PlayerController
+import app.detent.spotify.SpotifyAlbum
+import app.detent.spotify.SpotifyApi
+import app.detent.spotify.SpotifyAuth
+import app.detent.spotify.SpotifyException
+import app.detent.spotify.SpotifyPlaylist
+import app.detent.spotify.SpotifyTrack
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 sealed interface Screen {
     data object MainMenu : Screen
     data object Flow : Screen
+    data object SpotifyHome : Screen
+    data object SpotifyPlaylists : Screen
+    data class SpotifyPlaylistTracks(val id: String, val name: String) : Screen
+    data object SpotifyLiked : Screen
+    /** Saved Spotify albums, shown as the same Flow carousel as music on the phone. */
+    data object SpotifyAlbumsFlow : Screen
+    data class SpotifyAlbumTracks(val id: String, val name: String) : Screen
     data object Albums : Screen
     data object Artists : Screen
     data class ArtistAlbums(val artist: String) : Screen
@@ -41,7 +63,14 @@ class ListModel(
     val chevron: Boolean = true,
     /** Text shown on the right of a row, such as a setting's current value. Replaces the chevron. */
     val valueAt: ((Int) -> String)? = null,
+    /** Shown instead of rows when [count] is 0, for example while Spotify is still loading. */
+    val emptyText: String = "Nothing here yet",
 )
+
+/** A Spotify list on its way: still loading, failed with a short reason, or ready. */
+class SpotifyList<T>(val items: List<T> = emptyList(), val loading: Boolean = false, val error: String? = null) {
+    val emptyText: String get() = if (loading) "Loading…" else error ?: "Nothing here yet"
+}
 
 /**
  * Wheel in, screen out. The wheel calls [tick] and [button]; the screens read [current] and [listModel].
@@ -68,6 +97,83 @@ class DetentController(val appContext: android.content.Context, val player: Play
         player.setModes(shuffle, repeat.playerMode)
     }
 
+    // --- Spotify: sign-in and library browsing ---------------------------------------------------
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val spotifyAuth = SpotifyAuth(appContext)
+    private val spotifyApi = SpotifyApi(spotifyAuth)
+
+    var spotifySignedIn by mutableStateOf(spotifyAuth.signedIn)
+        private set
+
+    /** A short message drawn over the screen for a moment, or null. */
+    var notice by mutableStateOf<String?>(null)
+        private set
+
+    private val playlists = mutableStateOf(SpotifyList<SpotifyPlaylist>())
+    private val liked = mutableStateOf(SpotifyList<SpotifyTrack>())
+    private val spotifyAlbums = mutableStateOf(SpotifyList<SpotifyAlbum>())
+    private val playlistTracks = mutableStateMapOf<String, SpotifyList<SpotifyTrack>>()
+    private val albumTracks = mutableStateMapOf<String, SpotifyList<SpotifyTrack>>()
+
+    /** Saved Spotify albums in the shape Flow draws. Index matches [spotifyAlbums]. */
+    val spotifyFlowAlbums: List<Album>
+        get() = spotifyAlbums.value.items.map {
+            Album(id = it.id.hashCode().toLong() or SPOTIFY_ID_BIT, title = it.name, artist = it.artist, artUrl = it.imageUrl)
+        }
+
+    val spotifyAlbumsEmptyText: String get() = spotifyAlbums.value.emptyText
+
+    fun showNotice(text: String) {
+        notice = text
+        scope.launch {
+            delay(3_000)
+            if (notice == text) notice = null
+        }
+    }
+
+    /** Called when Spotify sends the browser back to the app after login. */
+    fun onAuthRedirect(uri: Uri) {
+        scope.launch {
+            val problem = spotifyAuth.completeLogin(uri)
+            spotifySignedIn = spotifyAuth.signedIn
+            showNotice(if (problem == null) "Signed in to Spotify" else "Spotify sign-in failed: $problem")
+        }
+    }
+
+    private fun <T> load(state: MutableState<SpotifyList<T>>, fetch: suspend () -> List<T>) {
+        if (state.value.loading) return
+        state.value = SpotifyList(state.value.items, loading = true)
+        scope.launch { state.value = fetchOrError(fetch) }
+    }
+
+    private fun <T> loadKeyed(map: MutableMap<String, SpotifyList<T>>, key: String, fetch: suspend () -> List<T>) {
+        if (map[key]?.loading == true) return
+        map[key] = SpotifyList(map[key]?.items.orEmpty(), loading = true)
+        scope.launch { map[key] = fetchOrError(fetch) }
+    }
+
+    private suspend fun <T> fetchOrError(fetch: suspend () -> List<T>): SpotifyList<T> =
+        try {
+            SpotifyList(fetch())
+        } catch (e: SpotifyException) {
+            SpotifyList(error = e.message ?: "Spotify error")
+        } catch (e: Exception) {
+            SpotifyList(error = "Couldn't reach Spotify")
+        }
+
+    private fun spotifyHomeItems(): List<String> = when {
+        !spotifyAuth.configured -> listOf("Spotify isn't set up")
+        !spotifySignedIn -> listOf("Sign in with Spotify")
+        else -> listOf("Playlists", "Liked Songs", "Albums", "Sign out")
+    }
+
+    private fun isFlow(screen: Screen) = screen == Screen.Flow || screen == Screen.SpotifyAlbumsFlow
+
+    private fun spotifyTrackModel(title: String, list: SpotifyList<SpotifyTrack>) = list.items.let { tracks ->
+        ListModel(title, tracks.size, { tracks[it].title }, { tracks[it].artist }, chevron = false, emptyText = list.emptyText)
+    }
+
     private fun applyModes() {
         prefs.edit().putBoolean("shuffle", shuffle).putInt("repeat", repeat.ordinal).apply()
         player.setModes(shuffle, repeat.playerMode)
@@ -89,6 +195,7 @@ class DetentController(val appContext: android.content.Context, val player: Play
         add("Artists")
         add("Songs")
         add("Shuffle Songs")
+        add("Spotify")
         add("Settings")
         if (player.currentTrackId != null) add("Now Playing")
     }
@@ -131,11 +238,29 @@ class DetentController(val appContext: android.content.Context, val player: Play
                 }
             },
         )
-        Screen.Flow, Screen.NowPlaying -> null
+        Screen.SpotifyHome -> spotifyHomeItems().let { items ->
+            ListModel("Spotify", items.size, { items[it] }, chevron = items.size > 1)
+        }
+        Screen.SpotifyPlaylists -> playlists.value.let { list ->
+            ListModel(
+                "Playlists",
+                list.items.size,
+                { list.items[it].name },
+                { "${list.items[it].trackCount} songs" },
+                emptyText = list.emptyText,
+            )
+        }
+        is Screen.SpotifyPlaylistTracks ->
+            spotifyTrackModel(screen.name, playlistTracks[screen.id] ?: SpotifyList(loading = true))
+        Screen.SpotifyLiked -> spotifyTrackModel("Liked Songs", liked.value)
+        is Screen.SpotifyAlbumTracks ->
+            spotifyTrackModel(screen.name, albumTracks[screen.id] ?: SpotifyList(loading = true))
+        Screen.Flow, Screen.SpotifyAlbumsFlow, Screen.NowPlaying -> null
     }
 
     private fun rowCount(screen: Screen): Int = when (screen) {
         Screen.Flow -> library.albums.size
+        Screen.SpotifyAlbumsFlow -> spotifyAlbums.value.items.size
         Screen.NowPlaying -> 0
         else -> listModel(screen)?.count ?: 0
     }
@@ -172,8 +297,8 @@ class DetentController(val appContext: android.content.Context, val player: Play
             WheelButton.Menu -> return back()
             WheelButton.Select -> select()
             WheelButton.PlayPause -> player.togglePlayPause()
-            WheelButton.Next -> if (current.screen == Screen.Flow) setSelected(current.selected + 1) else player.next()
-            WheelButton.Prev -> if (current.screen == Screen.Flow) setSelected(current.selected - 1) else player.previous()
+            WheelButton.Next -> if (isFlow(current.screen)) setSelected(current.selected + 1) else player.next()
+            WheelButton.Prev -> if (isFlow(current.screen)) setSelected(current.selected - 1) else player.previous()
         }
         return true
     }
@@ -204,9 +329,45 @@ class DetentController(val appContext: android.content.Context, val player: Play
                         push(Screen.NowPlaying)
                     }
                 }
+                "Spotify" -> push(Screen.SpotifyHome)
                 "Settings" -> push(Screen.Settings)
                 "Now Playing" -> push(Screen.NowPlaying)
             }
+            Screen.SpotifyHome -> when (spotifyHomeItems().getOrNull(i)) {
+                "Sign in with Spotify" -> spotifyAuth.startLogin()
+                "Playlists" -> {
+                    load(playlists) { spotifyApi.playlists() }
+                    push(Screen.SpotifyPlaylists)
+                }
+                "Liked Songs" -> {
+                    load(liked) { spotifyApi.likedSongs() }
+                    push(Screen.SpotifyLiked)
+                }
+                "Albums" -> {
+                    load(spotifyAlbums) { spotifyApi.savedAlbums() }
+                    push(Screen.SpotifyAlbumsFlow)
+                }
+                "Sign out" -> {
+                    spotifyAuth.signOut()
+                    spotifySignedIn = false
+                    playlists.value = SpotifyList()
+                    liked.value = SpotifyList()
+                    spotifyAlbums.value = SpotifyList()
+                    playlistTracks.clear()
+                    albumTracks.clear()
+                    showNotice("Signed out of Spotify")
+                }
+            }
+            Screen.SpotifyPlaylists -> playlists.value.items.getOrNull(i)?.let { p ->
+                loadKeyed(playlistTracks, p.id) { spotifyApi.playlistTracks(p.id) }
+                push(Screen.SpotifyPlaylistTracks(p.id, p.name))
+            }
+            Screen.SpotifyAlbumsFlow -> spotifyAlbums.value.items.getOrNull(i)?.let { a ->
+                loadKeyed(albumTracks, a.id) { spotifyApi.albumTracks(a) }
+                push(Screen.SpotifyAlbumTracks(a.id, a.name))
+            }
+            is Screen.SpotifyPlaylistTracks, Screen.SpotifyLiked, is Screen.SpotifyAlbumTracks ->
+                showNotice("Spotify playback isn't built yet")
             Screen.Settings -> {
                 if (i == 0) shuffle = !shuffle else repeat = RepeatSetting.entries[(repeat.ordinal + 1) % RepeatSetting.entries.size]
                 applyModes()
@@ -232,6 +393,9 @@ class DetentController(val appContext: android.content.Context, val player: Play
         }
     }
 }
+
+/** Marks album ids made from Spotify ids so they can't collide with MediaStore's small integers. */
+private const val SPOTIFY_ID_BIT = 1L shl 62
 
 fun formatTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
