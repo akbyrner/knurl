@@ -51,7 +51,12 @@ class RemoteState(
  *
  * Detent's package name and signing fingerprint must be registered on the app's Spotify dashboard page.
  */
-class SpotifyRemote(context: Context, private val clientId: String) {
+class SpotifyRemote(
+    context: Context,
+    private val clientId: String,
+    /** The visible Activity, used as the context for connecting so Spotify can open its "Allow" screen. */
+    private val activityProvider: () -> Context? = { null },
+) {
     private val appContext = context.applicationContext
     private var remote: SpotifyAppRemote? = null
     private var subscription: Subscription<PlayerState>? = null
@@ -96,7 +101,7 @@ class SpotifyRemote(context: Context, private val clientId: String) {
             .showAuthView(true)
             .build()
         SpotifyAppRemote.connect(
-            appContext,
+            activityProvider() ?: appContext,
             params,
             object : Connector.ConnectionListener {
                 override fun onConnected(appRemote: SpotifyAppRemote) {
@@ -118,7 +123,7 @@ class SpotifyRemote(context: Context, private val clientId: String) {
     private fun explain(error: Throwable): String = when (error) {
         is CouldNotFindSpotifyApp -> "The Spotify app isn't installed"
         is NotLoggedInException -> "Open the Spotify app and sign in"
-        is UserNotAuthorizedException -> "Spotify needs your OK for Detent. Try again and tap Allow."
+        is UserNotAuthorizedException -> "Spotify hasn't approved Detent yet"
         is AuthenticationFailedException -> "Spotify doesn't recognise Detent. Check its package name and fingerprint in the Spotify dashboard."
         is OfflineModeException -> "The Spotify app is in offline mode"
         is SpotifyConnectionTerminatedException, is SpotifyDisconnectedException -> "The Spotify app disconnected"
@@ -182,10 +187,13 @@ class SpotifyRemote(context: Context, private val clientId: String) {
         }.setErrorCallback { Log.w(TAG, "play failed: ${it.message}") }
     }
 
-    fun pause() { remote?.playerApi?.pause() }
-    fun resume() { remote?.playerApi?.resume() }
-    fun next() { remote?.playerApi?.skipNext() }
-    fun previous() { remote?.playerApi?.skipPrevious() }
+    fun pause() { remote?.playerApi?.pause()?.setErrorCallback { Log.w(TAG, "pause failed: ${it.message}") } }
+    fun resume() { remote?.playerApi?.resume()?.setErrorCallback { Log.w(TAG, "resume failed: ${it.message}") } }
+    fun next() { remote?.playerApi?.skipNext()?.setErrorCallback { Log.w(TAG, "skipNext failed: ${it.message}") } }
+    fun previous() {
+        remote?.playerApi?.skipPrevious()
+            ?.setErrorCallback { Log.w(TAG, "skipPrevious failed: ${it.message}") }
+    }
 
     /** Moves the playhead, and shows the new spot at once instead of waiting for the next report. */
     fun seekTo(positionMs: Long) {

@@ -28,7 +28,8 @@ class SpotifyAuth(context: Context) {
 
     val clientId: String = BuildConfig.SPOTIFY_CLIENT_ID
     val configured: Boolean get() = clientId.isNotBlank()
-    val signedIn: Boolean get() = prefs.getString(KEY_REFRESH, null) != null
+    /** Signed in with every permission Detent now asks for; an older sign-in with fewer permissions counts as signed out. */
+    val signedIn: Boolean get() = prefs.getString(KEY_REFRESH, null) != null && prefs.getString(KEY_SCOPES, null) == SCOPES
 
     /** Opens Spotify's login page in the browser. Detent gets the answer back through [REDIRECT_URI]. */
     fun startLogin() {
@@ -73,7 +74,7 @@ class SpotifyAuth(context: Context) {
                 ),
             )
             save(json)
-            prefs.edit().remove(KEY_VERIFIER).remove(KEY_STATE).apply()
+            prefs.edit().remove(KEY_VERIFIER).remove(KEY_STATE).putString(KEY_SCOPES, SCOPES).apply()
             null
         } catch (e: Exception) {
             e.message ?: "token request failed"
@@ -147,13 +148,15 @@ class SpotifyAuth(context: Context) {
         const val REDIRECT_URI = "app.detent://spotify-callback"
 
         // Library and playlists to browse; playback control for when the player is in.
+        // app-remote-control lets Detent steer the Spotify app through its App Remote.
         const val SCOPES = "user-library-read playlist-read-private playlist-read-collaborative " +
-            "user-read-playback-state user-modify-playback-state"
+            "user-read-playback-state user-modify-playback-state app-remote-control"
 
         private const val KEY_ACCESS = "access"
         private const val KEY_REFRESH = "refresh"
         private const val KEY_EXPIRES_AT = "expires_at"
         private const val KEY_VERIFIER = "verifier"
         private const val KEY_STATE = "state"
+        private const val KEY_SCOPES = "scopes"
     }
 }

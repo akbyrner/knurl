@@ -60,7 +60,8 @@ private fun rememberArt(album: Album): ImageBitmap? {
     val resolver = LocalContext.current.contentResolver
     val version = ArtCache.version
     return produceState(initialValue = ArtCache.lru.get(album.id), album.id, version) {
-        if (value == null) value = ArtCache.lru.get(album.id)
+        // Start from this album's own cached art (or nothing), so a new song never keeps the old cover.
+        value = ArtCache.lru.get(album.id)
         val uri = album.artUri
         val url = album.artUrl
         if (value == null && (uri != null || url != null) && album.id !in ArtCache.missing) {

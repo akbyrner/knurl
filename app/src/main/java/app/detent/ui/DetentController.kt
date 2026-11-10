@@ -104,7 +104,12 @@ class SpotifyList<T>(val items: List<T> = emptyList(), val loading: Boolean = fa
  * Wheel in, screen out. The wheel calls [tick] and [button]; the screens read [current] and [listModel].
  * Navigation is a stack: Select pushes, Menu pops, like the original.
  */
-class DetentController(val appContext: android.content.Context, val player: PlayerController) {
+class DetentController(
+    val appContext: android.content.Context,
+    val player: PlayerController,
+    /** The Activity currently on screen, if any. Spotify's "Allow Detent" screen must be opened from one. */
+    private val activityProvider: () -> android.content.Context? = { null },
+) {
     var library by mutableStateOf(demoLibrary)
         private set
 
@@ -130,7 +135,7 @@ class DetentController(val appContext: android.content.Context, val player: Play
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val spotifyAuth = SpotifyAuth(appContext)
     private val spotifyApi = SpotifyApi(spotifyAuth)
-    private val remote = SpotifyRemote(appContext, spotifyAuth.clientId).also { r ->
+    private val remote = SpotifyRemote(appContext, spotifyAuth.clientId, activityProvider).also { r ->
         // Cover art for what the Spotify app is playing arrives as a bitmap; hand it to the art cache.
         r.onImage = { key, bitmap -> putArt(spotifyArtId(key), bitmap) }
         // Shuffle and repeat from Settings apply to Spotify too, each time we connect.
@@ -509,7 +514,7 @@ class DetentController(val appContext: android.content.Context, val player: Play
             WheelButton.Select -> select()
             WheelButton.PlayPause -> togglePlayPause()
             WheelButton.Next -> if (isFlow(current.screen)) setSelected(current.selected + 1) else skip(forward = true)
-            WheelButton.Prev -> if (isFlow(current.screen)) setSelected(current.selected - 1) else player.previous()
+            WheelButton.Prev -> if (isFlow(current.screen)) setSelected(current.selected - 1) else skip(forward = false)
         }
         return true
     }
