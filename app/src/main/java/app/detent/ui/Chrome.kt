@@ -7,6 +7,7 @@ import android.os.BatteryManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -106,9 +107,9 @@ fun ScreenHeader(title: String?, modifier: Modifier = Modifier, left: (@Composab
     }
 }
 
-/** What is playing, as a card above the wheel on the menu screens. */
+/** What is playing, as a card above the wheel on the menu screens. Tapping it (when [onClick] is given) opens Now Playing. */
 @Composable
-fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier) {
+fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -125,7 +126,8 @@ fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier) {
             .height(64.dp)
             .clip(shape)
             .background(ROW_BG)
-            .border(1.dp, Color.White.copy(alpha = 0.07f), shape),
+            .border(1.dp, Color.White.copy(alpha = 0.07f), shape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),

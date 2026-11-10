@@ -147,6 +147,42 @@ class SpotifyApi(private val auth: SpotifyAuth) {
         )
     }
 
+    // --- Liking songs and the play queue ----------------------------------------------------------------
+
+    /** Whether the song is in the person's Liked Songs. Spotify has been renaming these endpoints, so try the new one first. */
+    suspend fun isTrackSaved(uri: String): Boolean {
+        val id = uri.substringAfterLast(':')
+        val text = try {
+            sendText("GET", "$API/me/library/contains?uris=${enc(uri)}", null)
+        } catch (e: SpotifyException) {
+            if (!isMissing(e)) throw e
+            sendText("GET", "$API/me/tracks/contains?ids=$id", null)
+        }
+        return JSONArray(text ?: "[]").optBoolean(0, false)
+    }
+
+    /** Adds the song to Liked Songs, or removes it. */
+    suspend fun setTrackSaved(uri: String, saved: Boolean) {
+        val id = uri.substringAfterLast(':')
+        val method = if (saved) "PUT" else "DELETE"
+        try {
+            sendText(method, "$API/me/library?uris=${enc(uri)}", null)
+        } catch (e: SpotifyException) {
+            if (!isMissing(e)) throw e
+            sendText(method, "$API/me/tracks?ids=$id", null)
+        }
+    }
+
+    /** What will play next in the Spotify app. */
+    suspend fun queue(): List<SpotifyTrack> {
+        val items = get("$API/me/player/queue").optJSONArray("queue") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { trackFrom(items.optJSONObject(it)) }
+    }
+
+    private fun isMissing(e: SpotifyException) = e.message?.let { it.startsWith("HTTP 404") || it.startsWith("HTTP 400") } == true
+
+    private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
+
     suspend fun albumTracks(album: SpotifyAlbum): List<SpotifyTrack> =
         pages("/v1/albums/${album.id}/tracks?limit=50").mapNotNull { t ->
             trackFrom(t)?.copy(albumName = album.name, imageUrl = album.imageUrl)
@@ -196,14 +232,18 @@ class SpotifyApi(private val auth: SpotifyAuth) {
     private suspend fun get(url: String): JSONObject = send("GET", url, null) ?: JSONObject()
 
     /** One call to the Web API with sign-in, one token refresh on 401 and a short wait on 429. Null for an empty (204) answer. */
-    private suspend fun send(method: String, url: String, jsonBody: String?): JSONObject? {
+    private suspend fun send(method: String, url: String, jsonBody: String?): JSONObject? =
+        sendText(method, url, jsonBody)?.let { JSONObject(it) }
+
+    /** Same as [send] but gives back the raw text, for answers that are a JSON list rather than an object. */
+    private suspend fun sendText(method: String, url: String, jsonBody: String?): String? {
         var refreshed = false
         var attempts = 0
         while (true) {
             val token = auth.accessToken(forceRefresh = refreshed) ?: throw SpotifyException("Not signed in")
             val (code, body, retryAfter) = withContext(Dispatchers.IO) { request(method, url, token, jsonBody) }
             when {
-                code in 200..299 -> return body.takeIf { it.isNotBlank() }?.let { JSONObject(it) }
+                code in 200..299 -> return body.takeIf { it.isNotBlank() }
                 code == 401 && !refreshed -> refreshed = true
                 code == 429 && attempts < 2 -> {
                     attempts++
@@ -240,6 +280,7 @@ class SpotifyApi(private val auth: SpotifyAuth) {
     }
 
     private companion object {
+        const val API = "https://api.spotify.com/v1"
         const val MAX_ITEMS = 500
     }
 }

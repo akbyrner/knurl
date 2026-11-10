@@ -27,7 +27,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 
-enum class ModeIcon { Shuffle, Repeat, NowPlaying }
+enum class ModeIcon { Shuffle, Repeat, Heart, Queue }
 
 private val DISC_TOP = Color(0xFF36363C)
 private val DISC_MID = Color(0xFF1F1F23)
@@ -57,9 +57,16 @@ private val REPEAT_PATHS: List<Path> by lazy {
     ).map { PathParser().parsePathString(it).toPath() }
 }
 
-// Three level bars, the "now playing" mark.
-private val NOW_PLAYING_PATHS: List<Path> by lazy {
-    listOf("M25 32v10", "M36 23v26", "M47 30v12").map { PathParser().parsePathString(it).toPath() }
+// A heart, for liking the song.
+private val HEART_PATHS: List<Path> by lazy {
+    listOf("M36 51C22 41 19 34 19 29a8.5 8.5 0 0 1 17-3 8.5 8.5 0 0 1 17 3c0 5-3 12-17 22z")
+        .map { PathParser().parsePathString(it).toPath() }
+}
+
+// Three lines of a list and a small play arrow: what plays next.
+private val QUEUE_PATHS: List<Path> by lazy {
+    listOf("M21 28h22", "M21 36h22", "M21 44h12", "M40 41l10 5.5-10 5.5z")
+        .map { PathParser().parsePathString(it).toPath() }
 }
 
 /**
@@ -134,9 +141,14 @@ private fun DrawScope.drawModeButton(icon: ModeIcon, lit: Boolean, badge: String
     val paths = when (icon) {
         ModeIcon.Shuffle -> SHUFFLE_PATHS
         ModeIcon.Repeat -> REPEAT_PATHS
-        ModeIcon.NowPlaying -> NOW_PLAYING_PATHS
+        ModeIcon.Heart -> HEART_PATHS
+        ModeIcon.Queue -> QUEUE_PATHS
     }
     withTransform({ scale(k, k, pivot = Offset.Zero) }) {
+        if (lit && icon == ModeIcon.Heart) {
+            // A liked heart is filled in.
+            paths.forEach { drawPath(it, ICON_ON.copy(alpha = 0.45f)) }
+        }
         if (lit) {
             // Soft halo behind the lit icon.
             val halo = Stroke(6.6f, cap = StrokeCap.Round, join = StrokeJoin.Round)

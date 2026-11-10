@@ -47,6 +47,8 @@ sealed interface Screen {
     data object Songs : Screen
     data object NowPlaying : Screen
     data object Settings : Screen
+    /** What plays next, from the Spotify app or from the phone's own queue. */
+    data object Queue : Screen
 }
 
 /** Everything Now Playing needs, whether the song comes from the phone or from Spotify. */
@@ -462,6 +464,127 @@ class DetentController(
         return true
     }
 
+    // --- Like and the queue --------------------------------------------------------------------------
+
+    /** Songs liked while playing from the phone's own files (there is no Liked Songs on the phone, so Detent keeps its own list). */
+    private var localFavorites by mutableStateOf(prefs.getStringSet("favorites", emptySet()).orEmpty().toSet())
+
+    /** Whether the Spotify song [spotifyLikedUri] is in Liked Songs, as last checked or set. */
+    private var spotifyLikedUri by mutableStateOf<String?>(null)
+    private var spotifyLikedValue by mutableStateOf(false)
+
+    private val spotifyQueue = mutableStateOf(SpotifyList<SpotifyTrack>())
+
+    init {
+        // Each time the Spotify app moves to another song, ask whether it is liked.
+        scope.launch {
+            androidx.compose.runtime.snapshotFlow { if (source == Source.Spotify) remote.state?.uri else null }
+                .collect { uri -> if (uri != null) refreshSpotifyLiked(uri) }
+        }
+    }
+
+    private suspend fun refreshSpotifyLiked(uri: String) {
+        if (!spotifyAuth.signedIn) return
+        try {
+            val saved = spotifyApi.isTrackSaved(uri)
+            if (remote.state?.uri == uri) {
+                spotifyLikedUri = uri
+                spotifyLikedValue = saved
+            }
+        } catch (e: Exception) {
+            // Leave the heart as it was; liking will report a real error if it still fails.
+        }
+    }
+
+    /** Whether the heart is lit: the song playing now is liked. */
+    val currentLiked: Boolean
+        get() = if (source == Source.Spotify) {
+            val uri = remote.state?.uri
+            uri != null && uri == spotifyLikedUri && spotifyLikedValue
+        } else {
+            player.currentTrackId?.toString() in localFavorites
+        }
+
+    /** Identifies the song playing, so a screen can refresh when it changes. */
+    val currentTrackKey: String?
+        get() = if (source == Source.Spotify) remote.state?.uri else player.currentTrackId?.toString()
+
+    /** The heart button: likes or unlikes what is playing. Returns true when something happened. */
+    fun toggleLike(): Boolean {
+        if (!hasNowPlaying) {
+            showNotice("Nothing is playing")
+            return false
+        }
+        if (source == Source.Spotify) {
+            val uri = remote.state?.uri ?: return false
+            if (!spotifyAuth.signedIn) {
+                showNotice("Sign in to Spotify to like songs")
+                return false
+            }
+            val want = !currentLiked
+            spotifyLikedUri = uri
+            spotifyLikedValue = want
+            scope.launch {
+                try {
+                    spotifyApi.setTrackSaved(uri, want)
+                    // The Liked Songs list is out of date now. Refresh it in place if it was loaded, keeping the rows
+                    // on screen meanwhile (this button is visible on every screen, including that list).
+                    if (liked.value.items.isNotEmpty()) load(liked) { spotifyApi.likedSongs() }
+                    showNotice(if (want) "Added to Liked Songs" else "Removed from Liked Songs")
+                } catch (e: Exception) {
+                    if (spotifyLikedUri == uri) spotifyLikedValue = !want
+                    showNotice((e as? SpotifyException)?.message ?: "Couldn't update Liked Songs")
+                }
+            }
+        } else {
+            val id = player.currentTrackId?.toString() ?: return false
+            localFavorites = if (id in localFavorites) localFavorites - id else localFavorites + id
+            prefs.edit().putStringSet("favorites", localFavorites).apply()
+            showNotice(if (id in localFavorites) "Added to Favorites" else "Removed from Favorites")
+        }
+        return true
+    }
+
+    /** The queue button: opens Up Next, or goes back from it. */
+    fun toggleQueue(): Boolean {
+        if (current.screen == Screen.Queue) return back()
+        if (!hasNowPlaying) {
+            showNotice("Nothing is playing")
+            return false
+        }
+        push(Screen.Queue)
+        return true
+    }
+
+    /** Fetches Up Next from the Spotify app. The phone's own queue is read straight from its player. */
+    fun loadQueue() {
+        if (source == Source.Spotify) load(spotifyQueue) { spotifyApi.queue() }
+    }
+
+    private fun localUpcoming(): List<Pair<Int, app.detent.data.Track>> {
+        player.currentTrackId // read so the list follows song changes
+        shuffle
+        return player.upcomingIndices().mapNotNull { index ->
+            player.trackIdAt(index)?.let { library.track(it) }?.let { index to it }
+        }
+    }
+
+    private fun queueModel(): ListModel {
+        if (source == Source.Spotify) {
+            val list = spotifyQueue.value
+            return ListModel(
+                "Up Next",
+                list.items.size,
+                { list.items[it].title },
+                { list.items[it].artist },
+                chevron = false,
+                emptyText = if (list.loading || list.error != null) list.emptyText else "Nothing up next",
+            )
+        }
+        val upcoming = localUpcoming()
+        return ListModel("Up Next", upcoming.size, { upcoming[it].second.title }, { upcoming[it].second.artist }, chevron = false, emptyText = "Nothing up next")
+    }
+
     /** The shuffle button beside the wheel. */
     fun toggleShuffle() {
         shuffle = !shuffle
@@ -541,6 +664,7 @@ class DetentController(
         Screen.Songs -> library.songs.let { songs ->
             ListModel("Songs", songs.size, { songs[it].title }, { songs[it].artist }, chevron = false)
         }
+        Screen.Queue -> queueModel()
         Screen.Settings -> ListModel(
             "Settings",
             settingsItems.size,
@@ -761,6 +885,21 @@ class DetentController(
                     playLocal(library.songs, i)
                     push(Screen.NowPlaying)
                 }
+            }
+            Screen.Queue -> if (source == Source.Spotify) {
+                // Spotify can't jump inside its queue, so skip ahead one song at a time.
+                if (i in spotifyQueue.value.items.indices) {
+                    scope.launch {
+                        repeat(i + 1) {
+                            remote.next()
+                            delay(250)
+                        }
+                        delay(500)
+                        loadQueue()
+                    }
+                }
+            } else {
+                localUpcoming().getOrNull(i)?.let { player.skipToIndex(it.first) }
             }
             Screen.NowPlaying -> nowPlayingMode =
                 if (nowPlayingMode == NowPlayingMode.Volume) NowPlayingMode.Scrub else NowPlayingMode.Volume

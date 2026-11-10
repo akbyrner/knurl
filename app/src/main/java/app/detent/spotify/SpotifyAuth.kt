@@ -151,7 +151,7 @@ class SpotifyAuth(context: Context) {
         // app-remote-control lets Detent steer the Spotify app through its App Remote.
         const val SCOPES = "user-library-read playlist-read-private playlist-read-collaborative " +
             "user-read-playback-state user-modify-playback-state app-remote-control " +
-            "user-read-recently-played user-follow-read"
+            "user-read-recently-played user-follow-read user-library-modify"
 
         private const val KEY_ACCESS = "access"
         private const val KEY_REFRESH = "refresh"

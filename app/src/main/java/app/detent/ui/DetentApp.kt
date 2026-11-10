@@ -47,6 +47,8 @@ fun DetentApp(controller: DetentController) {
 
         Column(Modifier.fillMaxSize()) {
             val entry = controller.current
+            // Up Next follows the song: fetch again when it changes while that screen is open.
+            if (entry.screen == Screen.Queue) androidx.compose.runtime.LaunchedEffect(controller.currentTrackKey) { controller.loadQueue() }
             // The status bar is hidden, so only the camera cut-out needs room at the top.
             val screenModifier = Modifier.weight(1f).fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top))
@@ -69,7 +71,13 @@ fun DetentApp(controller: DetentController) {
                             // same 10dp side margins as the rows. A long list pushes it down to the bottom.
                             MenuWithMiniPlayer(
                                 list = { ListScreen(model, entry.selected) },
-                                mini = { MiniPlayer(controller, Modifier.padding(horizontal = 10.dp)) },
+                                mini = {
+                                    MiniPlayer(
+                                        controller,
+                                        Modifier.padding(horizontal = 10.dp),
+                                        onClick = { if (controller.toggleNowPlaying()) haptics.press() },
+                                    )
+                                },
                                 modifier = screenModifier,
                             )
                         } else {
@@ -123,14 +131,24 @@ fun DetentApp(controller: DetentController) {
                     },
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 18.dp).offset(y = (-12).dp),
                 )
-                // Now Playing sits at the wheel's bottom-right corner. Lit while that screen is showing.
+                // Like at the bottom-left corner (lit when the song is liked), Up Next at the bottom-right.
                 ModeButton(
-                    icon = ModeIcon.NowPlaying,
-                    lit = entry.screen == Screen.NowPlaying,
-                    description = "Now Playing",
+                    icon = ModeIcon.Heart,
+                    lit = controller.currentLiked,
+                    description = if (controller.currentLiked) "Liked" else "Like",
                     size = modeSize,
                     onClick = {
-                        if (controller.toggleNowPlaying()) haptics.press()
+                        if (controller.toggleLike()) haptics.press()
+                    },
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.dp),
+                )
+                ModeButton(
+                    icon = ModeIcon.Queue,
+                    lit = entry.screen == Screen.Queue,
+                    description = "Up Next",
+                    size = modeSize,
+                    onClick = {
+                        if (controller.toggleQueue()) haptics.press()
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 18.dp),
                 )

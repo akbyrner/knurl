@@ -120,6 +120,29 @@ class PlayerController(context: Context) {
         if (c.currentPosition > 3_000 || !c.hasPreviousMediaItem()) c.seekTo(0) else c.seekToPreviousMediaItem()
     }
 
+    /** Positions in the queue of the songs that play after this one, in the order they will play (shuffle included). */
+    fun upcomingIndices(limit: Int = 50): List<Int> {
+        val c = controller ?: return emptyList()
+        val timeline = c.currentTimeline
+        if (timeline.isEmpty) return emptyList()
+        val out = mutableListOf<Int>()
+        var i = c.currentMediaItemIndex
+        while (out.size < limit) {
+            i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, c.shuffleModeEnabled)
+            if (i == androidx.media3.common.C.INDEX_UNSET) break
+            out += i
+        }
+        return out
+    }
+
+    fun trackIdAt(index: Int): Long? = controller?.getMediaItemAt(index)?.mediaId?.toLongOrNull()
+
+    /** Jumps to a song in the queue and plays it. */
+    fun skipToIndex(index: Int) = withController { c ->
+        c.seekToDefaultPosition(index)
+        c.play()
+    }
+
     /** Called by the screen while it is showing; the controller itself only reports changes. */
     fun refreshPosition() {
         controller?.let { positionMs = it.currentPosition }
