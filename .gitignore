@@ -6,3 +6,6 @@ local.properties
 .DS_Store
 *.keystore
 *.jks
+
+# Bundled librespot binary (14 MB). Rebuild with ~/src/detent-spike/build.sh and copy it here.
+app/src/main/jniLibs/

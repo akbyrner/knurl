@@ -47,7 +47,7 @@ fun DetentApp(controller: DetentController) {
                         AlbumFlow(albums, entry.selected, screenModifier)
                     }
                 }
-                Screen.NowPlaying -> NowPlayingScreen(controller.library, controller.player, controller.nowPlayingMode, screenModifier)
+                Screen.NowPlaying -> NowPlayingScreen(controller, controller.nowPlayingMode, screenModifier)
                 else -> {
                     val model = controller.listModel(screen)
                     if (model != null) ListScreen(model, entry.selected, screenModifier) else Box(screenModifier)

@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,8 +31,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.detent.data.Library
-import app.detent.playback.PlayerController
 import kotlinx.coroutines.delay
 
 private val TRACK = Color.White.copy(alpha = 0.18f)
@@ -40,21 +39,24 @@ private val FILL = Brush.verticalGradient(listOf(Color(0xFF4A95EA), Color(0xFF2A
 /** The album and its reflection on the black plane, track info, and a progress bar that turns into a volume bar. */
 @Composable
 fun NowPlayingScreen(
-    library: Library,
-    player: PlayerController,
+    controller: DetentController,
     mode: NowPlayingMode,
     modifier: Modifier = Modifier,
 ) {
-    val track = player.currentTrackId?.let { library.track(it) }
-    val album = track?.let { library.album(it.albumId) }
+    val player = controller.player
 
-    // The screen asks for the position while it is showing; the player only reports changes.
-    LaunchedEffect(player.isPlaying) {
+    // The phone's player only reports changes, and Spotify's position is worked out from the clock,
+    // so this screen asks for a fresh reading twice a second while it is showing.
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
         while (true) {
             player.refreshPosition()
+            nowMs = System.currentTimeMillis()
             delay(500)
         }
     }
+    val info = controller.nowPlayingInfo(nowMs)
+    val album = info?.art
 
     // Show the volume bar for a moment after each wheel tick, then go back to progress.
     var showVolume by remember { mutableStateOf(false) }
@@ -79,7 +81,7 @@ fun NowPlayingScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    track?.title ?: "Nothing playing",
+                    info?.title ?: "Nothing playing",
                     color = Color.White,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -87,9 +89,9 @@ fun NowPlayingScreen(
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
                 )
-                if (track != null) {
-                    Text(track.artist, color = Color(0xFFC9C9C9), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(track.albumTitle, color = Color(0xFFA0A0A8), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (info != null) {
+                    Text(info.artist, color = Color(0xFFC9C9C9), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(info.albumTitle, color = Color(0xFFA0A0A8), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Box(Modifier.weight(1f))
@@ -99,17 +101,18 @@ fun NowPlayingScreen(
                     Text("Volume", color = Color(0xFFB0B0B0), fontSize = 13.sp)
                 }
             } else {
-                val duration = if (player.durationMs > 0) player.durationMs else track?.durationMs ?: 0L
-                val fraction = if (duration > 0) (player.positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f
+                val duration = info?.durationMs ?: 0L
+                val position = info?.positionMs ?: 0L
+                val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
                 Bar(fraction, knob = mode == NowPlayingMode.Scrub)
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
                     val timeColor = if (mode == NowPlayingMode.Scrub) Color.White else Color(0xFFB0B0B0)
-                    Text(formatTime(player.positionMs), color = timeColor, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text(formatTime(position), color = timeColor, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     if (mode == NowPlayingMode.Scrub) {
                         Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                     }
                     Text(
-                        "-" + formatTime(duration - player.positionMs),
+                        "-" + formatTime(duration - position),
                         color = timeColor,
                         fontSize = 13.sp,
                         modifier = if (mode == NowPlayingMode.Scrub) Modifier.weight(1f) else Modifier,

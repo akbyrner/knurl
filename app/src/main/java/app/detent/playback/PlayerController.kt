@@ -109,6 +109,8 @@ class PlayerController(context: Context) {
         positionMs = target
     }
 
+    fun pause() = withController { c -> c.pause() }
+
     fun togglePlayPause() = withController { c -> if (c.isPlaying) c.pause() else c.play() }
 
     fun next() = withController { c -> if (c.hasNextMediaItem()) c.seekToNextMediaItem() }

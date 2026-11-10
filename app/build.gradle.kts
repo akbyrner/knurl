@@ -21,6 +21,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        // The bundled librespot binary is arm64 only.
+        ndk { abiFilters += "arm64-v8a" }
         // Public identifier of the Spotify app registration. Not a secret; the sign-in uses PKCE, so no client secret is needed or shipped.
         buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"${localProps.getProperty("spotify.clientId", "")}\"")
     }
@@ -41,6 +43,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    packaging {
+        // librespot is an executable shipped as a .so; it has to be unpacked to nativeLibraryDir to be run.
+        jniLibs { useLegacyPackaging = true }
     }
 }
 
