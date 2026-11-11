@@ -42,8 +42,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 // The look shared by every screen, taken from the design canvas.
-val ROW_BG = Color(0xFF141416)
-val ROW_BORDER = Color.White.copy(alpha = 0.06f)
+// Graphite Glass: rows, cards and the mini player are frosted panels over the graphite plane.
+val GRAPHITE = Color(0xFF18181B)
+val GLASS = Color.White.copy(alpha = 0.07f)
+val GLASS_BORDER = Color.White.copy(alpha = 0.12f)
+val GLASS_EDGE = Color.White.copy(alpha = 0.06f)
+val ROW_BG = GLASS
+val ROW_BORDER = GLASS_BORDER
+val INK = Color(0xFF111114)
 val TEXT_SECONDARY = Color(0xFFA8A8AD)
 val TEXT_TERTIARY = Color(0xFF8E8E93)
 val GLYPH = Color(0xFFC4C4C4)
@@ -86,22 +92,38 @@ private fun readLevel(intent: Intent?): Float {
     return if (l >= 0 && scale > 0) l.toFloat() / scale else 0.7f
 }
 
-/** The title bar: a centred title, an optional glyph on the left, and the battery on the right. */
+/**
+ * The title bar. Normally a big bold title on the left with the battery on the right; with [big] off (Now Playing)
+ * a small spaced-out caps title in the middle, an optional glyph on the left.
+ */
 @Composable
-fun ScreenHeader(title: String?, modifier: Modifier = Modifier, left: (@Composable () -> Unit)? = null) {
-    Box(modifier.fillMaxWidth().height(36.dp)) {
+fun ScreenHeader(title: String?, modifier: Modifier = Modifier, big: Boolean = true, left: (@Composable () -> Unit)? = null) {
+    Box(modifier.fillMaxWidth().height(if (big) 40.dp else 36.dp)) {
         if (left != null) Box(Modifier.align(Alignment.CenterStart).padding(start = 16.dp)) { left() }
         if (title != null) {
-            Text(
-                title,
-                modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
-                color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = (-0.01).em,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (big) {
+                Text(
+                    title,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 20.dp, end = 64.dp),
+                    color = Color.White,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.03).em,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Text(
+                    title.uppercase(),
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
+                    color = Color(0xFFB8B8BD),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.14.em,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         BatteryIndicator(Modifier.align(Alignment.CenterEnd).padding(end = 13.dp))
     }
@@ -119,21 +141,21 @@ fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier, onCl
         }
     }
     val info = controller.nowPlayingInfo(nowMs) ?: return
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier
             .fillMaxWidth()
             .height(64.dp)
             .clip(shape)
-            .background(ROW_BG)
-            .border(1.dp, Color.White.copy(alpha = 0.07f), shape)
+            .background(GLASS)
+            .border(1.dp, GLASS_BORDER, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (info.art != null) Art(info.art, Modifier.size(44.dp), corner = 8.dp) else Box(Modifier.size(44.dp))
+            if (info.art != null) Art(info.art, Modifier.size(44.dp), corner = 9.dp) else Box(Modifier.size(44.dp))
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(
                     info.title,

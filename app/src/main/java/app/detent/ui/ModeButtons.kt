@@ -159,7 +159,7 @@ private fun DrawScope.drawModeButton(icon: ModeIcon, lit: Boolean, badge: String
     }
 
     if (badge != null) {
-        drawCircle(Color.Black, 11f * k, Offset(55f * k, 17f * k))
+        drawCircle(GRAPHITE, 11f * k, Offset(55f * k, 17f * k))
         drawCircle(BADGE, 10f * k, Offset(55f * k, 17f * k))
         drawIntoCanvas { canvas ->
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {

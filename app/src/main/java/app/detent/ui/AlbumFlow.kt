@@ -46,7 +46,7 @@ fun AlbumFlow(
         position.animateTo(selected.toFloat(), spring(dampingRatio = 0.82f, stiffness = 260f))
     }
 
-    Column(modifier.background(Color.Black)) {
+    Column(modifier) {
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val cover = minOf(maxWidth * 0.64f, maxHeight * 0.80f)
             val p = position.value

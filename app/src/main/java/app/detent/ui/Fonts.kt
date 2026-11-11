@@ -14,4 +14,5 @@ val InterFamily = FontFamily(
     Font(R.font.inter, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
     Font(R.font.inter, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
     Font(R.font.inter, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+    Font(R.font.inter, FontWeight.ExtraBold, variationSettings = FontVariation.Settings(FontVariation.weight(800))),
 )

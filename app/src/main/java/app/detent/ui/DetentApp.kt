@@ -33,15 +33,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The phone *is* the iPod. One black plane edge to edge: the current screen takes roughly the top
- * two thirds, the wheel sits on the same black below it. No bezel, no seam.
+ * The phone *is* the iPod. One graphite plane edge to edge: the current screen takes roughly the top
+ * two thirds, the wheel sits on the same plane below it. No bezel, no seam.
  */
 @Composable
 fun DetentApp(controller: DetentController) {
     val haptics = remember { Haptics(controller.appContext) }
 
     CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = InterFamily)) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(PLANE)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(GRAPHITE)) {
+        GraphitePlane(
+            art = controller.nowPlayingInfo(System.currentTimeMillis())?.art,
+            tall = controller.current.screen == Screen.NowPlaying,
+            modifier = Modifier.fillMaxSize(),
+        )
         // The wheel is sized from the phone, so the view above it keeps about two thirds of the height.
         val wheel = minOf(maxWidth * 0.62f, maxHeight * 0.30f)
 
@@ -174,8 +179,6 @@ fun DetentApp(controller: DetentController) {
     }
     }
 }
-
-private val PLANE = Color.Black
 
 /** A list with the now-playing card centred in whatever room the list leaves above the controls. */
 @Composable

@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -35,16 +36,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
-private val SELECTED = Brush.verticalGradient(listOf(Color(0xFF3A76F0), Color(0xFF2563EB)))
-private val CHEVRON = Color(0xFF8A8F98)
+// The selected row is bright white glass with dark text.
+private val SELECTED = Color.White.copy(alpha = 0.92f)
+private val CHEVRON = Color.White.copy(alpha = 0.55f)
 private val CHECK = Color(0xFF5AA0FF)
 
 /** A menu or list on the black plane: a header, then rounded rows with a blue highlight on the selected one. */
 @Composable
 fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
     val state = rememberLazyListState()
-    val rowHeight = (model.rowHeightDp ?: if (model.subtitleAt != null && model.numberAt == null) 56 else 42).dp
-    val corner = if (rowHeight >= 60.dp) 14.dp else 12.dp
+    val rowHeight = (model.rowHeightDp ?: if (model.subtitleAt != null && model.numberAt == null) 56 else 40).dp
+    val corner = if (rowHeight >= 56.dp) 16.dp else 14.dp
 
     // Keep the highlighted row on screen: scroll only when it moves past either edge.
     LaunchedEffect(selected, model.count) {
@@ -61,7 +63,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier.background(Color.Black)) {
+    Column(modifier) {
         val header = model.header
         if (header != null) {
             Box(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
@@ -83,7 +85,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                 BatteryIndicator(Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 13.dp))
             }
         } else {
-            ScreenHeader(model.title, Modifier.padding(bottom = 4.dp))
+            ScreenHeader(model.title, Modifier.padding(bottom = 16.dp))
         }
         if (model.count == 0) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -103,16 +105,17 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                     val shape = RoundedCornerShape(corner)
                     Row(
                         Modifier
-                            .padding(horizontal = 10.dp)
+                            .padding(horizontal = 12.dp)
                             .fillMaxWidth()
                             .height(rowHeight)
+                            .then(if (isSelected) Modifier.shadow(8.dp, shape, ambientColor = Color.Black, spotColor = Color.Black) else Modifier)
                             .clip(shape)
-                            .background(if (isSelected) SELECTED else Brush.verticalGradient(listOf(ROW_BG, ROW_BG)))
-                            .border(1.dp, if (isSelected) Color.Transparent else ROW_BORDER, shape)
+                            .background(if (isSelected) SELECTED else ROW_BG)
+                            .border(1.dp, if (isSelected) SELECTED else ROW_BORDER, shape)
                             .drawWithContent {
                                 drawContent()
-                                // The light top edge of the selected row.
-                                if (isSelected) drawRect(Color.White.copy(alpha = 0.18f), Offset.Zero, Size(size.width, 1.dp.toPx()))
+                                // The faint light top edge of a glass row.
+                                if (!isSelected) drawRect(GLASS_EDGE, Offset.Zero, Size(size.width, 1.dp.toPx()))
                             }
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -123,7 +126,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                                 number(i),
                                 modifier = Modifier.width(22.dp),
                                 textAlign = TextAlign.End,
-                                color = if (isSelected) Color.White else Color(0xFF9A9AA0),
+                                color = if (isSelected) INK else Color(0xFF9A9AA0),
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
                             )
@@ -132,7 +135,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                         Column(Modifier.weight(1f)) {
                             Text(
                                 model.titleAt(i),
-                                color = if (dim && !isSelected) Color(0xFF8B8B92) else Color.White,
+                                color = when { isSelected -> INK; dim -> Color(0xFF8B8B92); else -> Color(0xFFF2F2F4) },
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.Medium,
                                 letterSpacing = (-0.01).em,
@@ -142,7 +145,7 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                             if (model.numberAt == null) model.subtitleAt?.let { sub ->
                                 Text(
                                     sub(i),
-                                    color = if (isSelected) Color.White else TEXT_SECONDARY,
+                                    color = if (isSelected) Color(0xFF4A4A52) else TEXT_SECONDARY,
                                     fontSize = 13.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -154,11 +157,11 @@ fun ListScreen(model: ListModel, selected: Int, modifier: Modifier = Modifier) {
                             value != null -> Text(
                                 value(i),
                                 modifier = Modifier.padding(start = 12.dp),
-                                color = if (isSelected) Color.White else TEXT_SECONDARY,
+                                color = if (isSelected) Color(0xFF4A4A52) else TEXT_SECONDARY,
                                 fontSize = 17.sp,
                             )
-                            model.checkAt?.invoke(i) == true -> Check(CHECK.takeIf { !isSelected } ?: Color.White)
-                            model.chevron && !dim -> Chevron(if (isSelected) Color.White else CHEVRON)
+                            model.checkAt?.invoke(i) == true -> Check(CHECK.takeIf { !isSelected } ?: INK)
+                            model.chevron && !dim -> Chevron(if (isSelected) INK else CHEVRON)
                         }
                     }
                 }

@@ -3,6 +3,7 @@ package app.detent.ui
 import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -80,85 +82,98 @@ fun NowPlayingScreen(
         }
     }
 
-    Column(modifier.background(Color.Black)) {
-        ScreenHeader("Now Playing", left = { PlayPauseGlyph(playing = info?.isPlaying == true, color = GLYPH) })
+    Column(modifier) {
+        ScreenHeader("Now Playing", big = false, left = { PlayPauseGlyph(playing = info?.isPlaying == true, color = GLYPH) })
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            // As in the design: the cover takes nearly the whole width (16dp margins), as tall as fits above the details.
-            val art = minOf(maxWidth - 32.dp, maxHeight - 130.dp)
+            // The cover sits above a frosted card holding the song details and the progress bar; it takes the room the card leaves.
+            val art = minOf(maxWidth - 60.dp, maxHeight - CARD_HEIGHT - 20.dp)
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.padding(top = 4.dp), contentAlignment = Alignment.TopCenter) {
                     if (album != null) {
-                        // A soft glow from the cover's own colours, behind it. Needs Android 12 for the blur.
-                        if (Build.VERSION.SDK_INT >= 31) {
-                            Art(
-                                album,
-                                Modifier.padding(top = art * 0.1f).size(art * 0.8f, art * 0.7f).alpha(0.45f).blur(56.dp).clip(CircleShape),
-                            )
-                        }
-                        Art(album, Modifier.size(art), corner = 12.dp, letterSize = (art.value * 0.26f).sp)
+                        val shape = RoundedCornerShape(14.dp)
+                        Art(
+                            album,
+                            Modifier.size(art).shadow(24.dp, shape, ambientColor = Color.Black, spotColor = Color.Black),
+                            corner = 14.dp,
+                            letterSize = (art.value * 0.26f).sp,
+                        )
                     } else {
                         Box(Modifier.size(art))
                     }
                 }
                 Box(Modifier.weight(1f))
-                if (info != null) {
-                    Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        InfoRow(InfoKind.Song) {
-                            Text(info.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).em, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val cardShape = RoundedCornerShape(18.dp)
+                Column(
+                    Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .clip(cardShape)
+                        .background(GLASS)
+                        .border(1.dp, GLASS_BORDER, cardShape)
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                ) {
+                    if (info != null) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            InfoRow(InfoKind.Song) {
+                                Text(info.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            InfoRow(InfoKind.Artist) {
+                                Text(info.artist, color = INFO_TEXT, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            InfoRow(InfoKind.Album) {
+                                Text(
+                                    buildAnnotatedString {
+                                        append(info.albumTitle)
+                                        info.trackOf?.let { withStyle(SpanStyle(color = TEXT_SECONDARY)) { append(" · $it") } }
+                                    },
+                                    color = INFO_TEXT,
+                                    fontSize = 15.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                        InfoRow(InfoKind.Artist) {
-                            Text(info.artist, color = Color(0xFFC9C9C9), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    } else {
+                        Text("Nothing playing", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Box(Modifier.height(12.dp))
+                    if (showVolume) {
+                        Bar(player.volume)
+                        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                            Text("Volume", color = TEXT_SECONDARY, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
-                        InfoRow(InfoKind.Album) {
+                    } else {
+                        val duration = info?.durationMs ?: 0L
+                        val position = info?.positionMs ?: 0L
+                        val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
+                        val scrubbing = mode == NowPlayingMode.Scrub
+                        Bar(fraction)
+                        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                            val timeColor = if (scrubbing) Color.White else Color(0xFFB0B0B5)
+                            Text(formatTime(position), color = timeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            if (scrubbing) {
+                                Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                            }
                             Text(
-                                buildAnnotatedString {
-                                    append(info.albumTitle)
-                                    info.trackOf?.let { withStyle(SpanStyle(color = TEXT_TERTIARY)) { append(" · $it") } }
-                                },
-                                color = Color(0xFFC9C9C9),
-                                fontSize = 15.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                "-" + formatTime(duration - position),
+                                color = timeColor,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = if (scrubbing) Modifier.weight(1f) else Modifier,
+                                textAlign = TextAlign.End,
                             )
                         }
                     }
-                } else {
-                    Text("Nothing playing", modifier = Modifier.padding(horizontal = 24.dp), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 }
-                Box(Modifier.weight(1f))
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                if (showVolume) {
-                    Bar(player.volume)
-                    Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)) {
-                        Text("Volume", color = TEXT_SECONDARY, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
-                } else {
-                    val duration = info?.durationMs ?: 0L
-                    val position = info?.positionMs ?: 0L
-                    val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-                    val scrubbing = mode == NowPlayingMode.Scrub
-                    Bar(fraction)
-                    Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp)) {
-                        val timeColor = if (scrubbing) Color.White else TEXT_SECONDARY
-                        Text(formatTime(position), color = timeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        if (scrubbing) {
-                            Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                        }
-                        Text(
-                            "-" + formatTime(duration - position),
-                            color = timeColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = if (scrubbing) Modifier.weight(1f) else Modifier,
-                            textAlign = TextAlign.End,
-                        )
-                    }
-                }
-                }
+                Box(Modifier.height(8.dp))
             }
         }
     }
 }
+
+private val CARD_HEIGHT = 148.dp
+private val INFO_TEXT = Color(0xFFD0D0D4)
+private val INFO_ICON = Color.White.copy(alpha = 0.6f)
 
 private enum class InfoKind { Song, Artist, Album }
 
@@ -174,27 +189,27 @@ private fun InfoRow(kind: InfoKind, content: @Composable () -> Unit) {
                         Path().apply {
                             moveTo(6 * u, 13 * u); lineTo(6 * u, 3.2f * u); lineTo(14 * u, 1.6f * u); lineTo(14 * u, 11.5f * u)
                         },
-                        TEXT_TERTIARY,
+                        INFO_ICON,
                         style = stroke,
                     )
-                    drawCircle(TEXT_TERTIARY, 2 * u, Offset(4 * u, 13 * u))
-                    drawCircle(TEXT_TERTIARY, 2 * u, Offset(12 * u, 11.5f * u))
+                    drawCircle(INFO_ICON, 2 * u, Offset(4 * u, 13 * u))
+                    drawCircle(INFO_ICON, 2 * u, Offset(12 * u, 11.5f * u))
                 }
                 InfoKind.Artist -> {
-                    drawCircle(TEXT_TERTIARY, 2.9f * u, Offset(8 * u, 5.3f * u), style = stroke)
+                    drawCircle(INFO_ICON, 2.9f * u, Offset(8 * u, 5.3f * u), style = stroke)
                     drawPath(
                         Path().apply {
                             moveTo(2.6f * u, 14.6f * u)
                             cubicTo(3.4f * u, 11.6f * u, 5.5f * u, 10.1f * u, 8 * u, 10.1f * u)
                             cubicTo(10.5f * u, 10.1f * u, 12.6f * u, 11.6f * u, 13.4f * u, 14.6f * u)
                         },
-                        TEXT_TERTIARY,
+                        INFO_ICON,
                         style = stroke,
                     )
                 }
                 InfoKind.Album -> {
-                    drawCircle(TEXT_TERTIARY, 6.4f * u, Offset(8 * u, 8 * u), style = stroke)
-                    drawCircle(TEXT_TERTIARY, 1.7f * u, Offset(8 * u, 8 * u))
+                    drawCircle(INFO_ICON, 6.4f * u, Offset(8 * u, 8 * u), style = stroke)
+                    drawCircle(INFO_ICON, 1.7f * u, Offset(8 * u, 8 * u))
                 }
             }
         }

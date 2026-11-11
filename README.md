@@ -1,6 +1,6 @@
 # Detent
 
-**The phone is the iPod.** Detent is an Android music player that turns your whole screen into one continuous black
+**The phone is the iPod.** Detent is an Android music player that turns your whole screen into one continuous graphite
 plane with a Cover Flow style album carousel and a click wheel at the bottom. There is no fake device frame: the
 phone itself is the player. It plays music from the phone and drives the Spotify app as a remote control, with the
 library, queue, likes and now-playing info all shown in Detent's own screens.
@@ -20,8 +20,9 @@ It is a personal project built for one person's Pixel 10a. It runs on any Androi
 - **Click wheel** – drag around the ring to scroll, tap the quadrants for Menu / Previous / Next / Play-Pause, tap the
   centre to select. Every detent gives a haptic tick.
 - **iPod-style menus** – Flow, Albums, Artists, Songs, Playlists, Sources, Shuffle Songs, Settings and Now Playing on
-  rounded rows with the familiar blue highlight.
-- **Now Playing** – large cover art, song / artist / album, a progress bar with scrubbing, and a volume bar. Select
+  frosted-glass rows with a bright white highlight. The look is called Graphite Glass: graphite with a faint grain, and a
+  soft blurred wash of the playing cover at the top.
+- **Now Playing** – large cover art over a glass card with song / artist / album, a progress bar with scrubbing, and a volume bar. Select
   switches the wheel between volume and scrubbing.
 - **Four corner buttons around the wheel** – shuffle (top-left), repeat (top-right), like (bottom-left) and Up Next
   (bottom-right). They glow blue when on; repeat-one shows a "1" badge.
