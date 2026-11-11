@@ -81,13 +81,13 @@ private fun rememberArt(album: Album): ImageBitmap? {
 
 /** Album art, or a stable coloured tile with the album's first letter when the files carry none. */
 @Composable
-fun Art(album: Album, modifier: Modifier, corner: Dp = 0.dp, letterSize: TextUnit = 64.sp) {
+fun Art(album: Album, modifier: Modifier, corner: Dp = 0.dp, letterSize: TextUnit = 64.sp, colorFilter: androidx.compose.ui.graphics.ColorFilter? = null) {
     val bmp = rememberArt(album)
     val shape = RoundedCornerShape(corner)
     // A faint inner edge keeps dark covers from melting into the black plane.
     val framed = modifier.clip(shape).then(if (corner > 0.dp) Modifier.border(1.dp, Color.White.copy(alpha = 0.08f), shape) else Modifier)
     if (bmp != null) {
-        Image(bmp, contentDescription = album.title, modifier = framed, contentScale = ContentScale.Crop)
+        Image(bmp, contentDescription = album.title, modifier = framed, contentScale = ContentScale.Crop, colorFilter = colorFilter)
     } else {
         // Deterministic colour from the album id so each placeholder is distinct and stable.
         val h = album.hue?.let { it / 360f } ?: (((album.id * 2654435761L) and 0xFFFF).toFloat() / 0xFFFF)

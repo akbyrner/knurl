@@ -10,13 +10,15 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
@@ -35,6 +37,15 @@ private val GRAIN: ShaderBrush by lazy {
     ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
 }
 
+/** More saturation and a little more light, so the wash reads as the cover's colour rather than grey. */
+private val WASH_FILTER = ColorFilter.colorMatrix(
+    ColorMatrix().apply { setToSaturation(1.6f) }.also { m ->
+        val v = m.values
+        // add a small lift to each colour channel (translation column)
+        v[4] += 18f; v[9] += 18f; v[14] += 18f
+    },
+)
+
 /**
  * The Graphite Glass plane every screen sits on: deep graphite with grain and a soft light from the top, so the screen
  * and the wheel read as one material. While something plays, a faint blurred wash of its cover colours the top;
@@ -44,14 +55,17 @@ private val GRAIN: ShaderBrush by lazy {
 fun GraphitePlane(art: Album?, tall: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.background(GRAPHITE).clipToBounds()) {
         if (art != null && Build.VERSION.SDK_INT >= 31) {
+            // Tall enough to reach past where it fades out, so no edge of the picture ever shows. Colours are pushed
+            // a little past natural so even a dark cover tints the plane visibly.
             Art(
                 art,
                 Modifier
                     .wrapContentSize(Alignment.TopStart, unbounded = true)
-                    .offset(x = (-80).dp, y = if (tall) (-100).dp else (-140).dp)
-                    .size(550.dp, if (tall) 680.dp else 560.dp)
-                    .alpha(if (tall) 0.5f else 0.4f)
-                    .blur(60.dp, BlurredEdgeTreatment.Unbounded),
+                    .offset(x = (-120).dp, y = (-160).dp)
+                    .size(630.dp, if (tall) 880.dp else 760.dp)
+                    .graphicsLayer { alpha = if (tall) 0.9f else 0.8f }
+                    .blur(70.dp, BlurredEdgeTreatment.Unbounded),
+                colorFilter = WASH_FILTER,
             )
         }
         // The wash fades into plain graphite towards the wheel.
