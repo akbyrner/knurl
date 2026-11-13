@@ -183,8 +183,10 @@ class SpotifyRemote(
      * Plays a track, album or playlist. With [startIndex] it then jumps to that track inside the album or
      * playlist; [queueAfter] adds songs to the queue behind it.
      */
-    fun play(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList(), onStarted: () -> Unit = {}) {
+    fun play(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList(), shuffle: Boolean? = null, onStarted: () -> Unit = {}) {
         val api = remote?.playerApi ?: return
+        // Starting a playlist turns Spotify's shuffle on by itself, so set it to what the person chose first.
+        if (shuffle != null) api.setShuffle(shuffle)
         api.play(uri).setResultCallback {
             if (startIndex != null && startIndex > 0) api.skipToIndex(uri, startIndex)
             queueAfter.forEach { api.queue(it) }

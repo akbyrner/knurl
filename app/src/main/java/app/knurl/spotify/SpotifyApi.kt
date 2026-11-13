@@ -173,6 +173,11 @@ class SpotifyApi(private val auth: SpotifyAuth) {
         }
     }
 
+    private var cachedUserId: String? = null
+
+    /** The signed-in person's Spotify user name, which Liked Songs needs as part of its play address. */
+    suspend fun userId(): String = cachedUserId ?: get("$API/me").getString("id").also { cachedUserId = it }
+
     /** What will play next in the Spotify app. */
     suspend fun queue(): List<SpotifyTrack> {
         val items = get("$API/me/player/queue").optJSONArray("queue") ?: return emptyList()

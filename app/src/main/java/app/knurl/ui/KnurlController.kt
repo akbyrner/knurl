@@ -278,7 +278,7 @@ class KnurlController(
      * Starts a song, album or playlist in the Spotify app, in the background, then shows Now Playing.
      * The first time, Spotify asks (in its own app) to allow Knurl.
      */
-    private fun playSpotify(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList()) {
+    private fun playSpotify(uri: String, startIndex: Int? = null, queueAfter: List<String> = emptyList(), trackList: List<String>? = null) {
         // A second Select while the first is still connecting would start a second attempt.
         if (spotifyStarting) return
         spotifyStarting = true
@@ -290,8 +290,34 @@ class KnurlController(
                     showNotice(remote.detail ?: "Couldn't reach the Spotify app")
                     return@launch
                 }
+                // A plain list of songs (Liked Songs): hand Spotify the list itself so it plays in order from the chosen
+                // song, instead of adding songs to the queue, which would leave them behind to play ahead of later plays.
+                if (trackList != null) {
+                    val started = try {
+                        val device = spotifyApi.devices().let { d -> d.firstOrNull { it.isActive } ?: d.firstOrNull() }
+                        if (device != null) {
+                            remote.setShuffle(shuffle)
+                            spotifyApi.play(device.id, uris = trackList)
+                            true
+                        } else false
+                    } catch (e: Exception) { false }
+                    if (started) {
+                        source = Source.Spotify
+                        prefs.edit().putString("lastSource", "spotify").apply()
+                        scope.launch { delay(1_200); pushModesToSpotify() }
+                        if (current.screen != Screen.NowPlaying) push(Screen.NowPlaying)
+                        return@launch
+                    }
+                }
                 // Spotify forgets shuffle and repeat when a new playlist starts, so set them again afterwards.
-                remote.play(uri, startIndex, queueAfter, onStarted = { pushModesToSpotify() })
+                remote.play(uri, startIndex, queueAfter, shuffle = shuffle, onStarted = {
+                    pushModesToSpotify()
+                    // Spotify can switch shuffle back on a moment after a playlist starts, so say it again.
+                    scope.launch {
+                        delay(1_200)
+                        pushModesToSpotify()
+                    }
+                })
                 source = Source.Spotify
                 prefs.edit().putString("lastSource", "spotify").apply()
                 if (current.screen != Screen.NowPlaying) push(Screen.NowPlaying)
@@ -1067,7 +1093,7 @@ class KnurlController(
             }
             Screen.SpotifyLiked -> liked.value.items.let { all ->
                 // Liked Songs has no playlist address to jump into, so play the song and queue the next few behind it.
-                if (i in all.indices) playSpotify(all[i].uri, queueAfter = all.drop(i + 1).take(30).map { it.uri })
+                if (i in all.indices) playSpotify(all[i].uri, queueAfter = all.drop(i + 1).take(30).map { it.uri }, trackList = all.drop(i).take(100).map { it.uri })
             }
             Screen.Settings -> when (i) {
                 in 0 until SettingsRow.THEMES -> selectTheme(ThemeChoice.entries[i])
