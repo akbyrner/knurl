@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/face" android:layout_width="match_parent" android:layout_height="match_parent" android:scaleType="fitXY" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="bottom" android:layout_marginStart="14dp" android:layout_marginEnd="14dp" android:layout_marginBottom="12dp" android:orientation="vertical">
+        <TextView android:id="@+id/title" android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end" android:textColor="#FFFFFFFF" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:textStyle="bold" />
+        <TextView android:id="@+id/artist" android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end" android:textColor="#FFD0D1D5" android:textSize="12sp" />
+    </LinearLayout>
+    <ImageButton android:id="@+id/play" android:layout_width="56dp" android:layout_height="56dp" android:layout_gravity="top|end" android:layout_margin="8dp" android:background="@null" android:contentDescription="Play or pause" />
+</FrameLayout>

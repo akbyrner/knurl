@@ -50,11 +50,16 @@ fun ClickWheel(
     modifier: Modifier = Modifier,
     onTick: (Int) -> Unit,
     onButton: (WheelButton) -> Unit,
+    /** Degrees of finger travel around the ring for one detent: a smaller number is a faster wheel. */
+    tickDegrees: Double = TICK_DEGREES,
 ) {
+    val degrees by rememberUpdatedState(tickDegrees)
     val tick by rememberUpdatedState(onTick)
     val button by rememberUpdatedState(onButton)
     val slop = LocalViewConfiguration.current.touchSlop
     val grain = remember { grainShader() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val mono = remember { androidx.core.content.res.ResourcesCompat.getFont(context, app.detent.R.font.plex_mono_semibold) }
 
     Canvas(
         modifier
@@ -101,7 +106,7 @@ fun ClickWheel(
                             if (d < -PI) d += 2 * PI
                             lastAngle = a
                             accumulated += d
-                            val step = Math.toRadians(TICK_DEGREES)
+                            val step = Math.toRadians(degrees)
                             while (abs(accumulated) >= step) {
                                 val dir = if (accumulated > 0) 1 else -1
                                 accumulated -= dir * step
@@ -113,7 +118,7 @@ fun ClickWheel(
                 }
             },
     ) {
-        drawWheel(grain)
+        drawWheel(grain, mono)
     }
 }
 
@@ -150,7 +155,7 @@ private val LABEL = Color(0xFFDCDCE0)
  * Draws the wheel in the design's own 328-unit space, scaled to fit: a dark glossy disc with grain, a light top
  * edge, a recessed centre button and the MENU, skip and play/pause labels.
  */
-private fun DrawScope.drawWheel(grain: ShaderBrush) {
+private fun DrawScope.drawWheel(grain: ShaderBrush, mono: android.graphics.Typeface?) {
     val k = size.minDimension / 328f
     fun p(x: Float, y: Float) = Offset(x * k, y * k)
     val c = p(164f, 164f)
@@ -182,6 +187,9 @@ private fun DrawScope.drawWheel(grain: ShaderBrush) {
         162.2f * k, c, style = Stroke(1.6f * k),
     )
 
+    // The detent: one orange tick at the top of the ring.
+    drawRoundRect(ORANGE, p(162f, 6f), Size(4f * k, 14f * k), CornerRadius(2f * k))
+
     // Centre button: a dark well, then the button, then its rim.
     drawCircle(Color(0xFF050506), 64f * k, c)
     drawCircle(Color.Black.copy(alpha = 0.6f), 64.5f * k, c, style = Stroke(2f * k))
@@ -195,12 +203,12 @@ private fun DrawScope.drawWheel(grain: ShaderBrush) {
     drawIntoCanvas { canvas ->
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = LABEL.toArgb()
-            textSize = 20f * k
-            letterSpacing = 0.15f
+            textSize = 18f * k
+            letterSpacing = 0.22f
             textAlign = android.graphics.Paint.Align.CENTER
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 600, false)
+            typeface = mono ?: android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, 600, false)
         }
-        canvas.nativeCanvas.drawText("MENU", 165.5f * k, 62f * k, paint)
+        canvas.nativeCanvas.drawText("MENU", 166f * k, 64f * k, paint)
     }
 
     fun triangle(x1: Float, y1: Float, x2: Float, y2: Float, x3: Float, y3: Float) {

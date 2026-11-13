@@ -124,7 +124,7 @@ fun NowPlayingScreen(
                                 Text(
                                     buildAnnotatedString {
                                         append(info.albumTitle)
-                                        info.trackOf?.let { withStyle(SpanStyle(color = TEXT_SECONDARY)) { append(" · $it") } }
+                                        info.trackOf?.let { withStyle(SpanStyle(color = TEXT_SECONDARY, fontFamily = PlexMono, fontSize = 12.sp)) { append(" · ${it.replace(" of ", "/")}") } }
                                     },
                                     color = INFO_TEXT,
                                     fontSize = 15.sp,
@@ -140,7 +140,7 @@ fun NowPlayingScreen(
                     if (showVolume) {
                         Bar(player.volume)
                         Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-                            Text("Volume", color = TEXT_SECONDARY, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text("VOLUME", color = Color(0xFFB0B0B5), fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.06.em)
                         }
                     } else {
                         val duration = info?.durationMs ?: 0L
@@ -150,15 +150,17 @@ fun NowPlayingScreen(
                         Bar(fraction)
                         Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
                             val timeColor = if (scrubbing) Color.White else Color(0xFFB0B0B5)
-                            Text(formatTime(position), color = timeColor, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Text(formatClock(position), color = timeColor, fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.06.em, modifier = Modifier.weight(1f))
                             if (scrubbing) {
-                                Text("Scrub", color = Color(0xFF5AA0FF), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                                Text("SCRUB", color = ORANGE, fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.12.em, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
                             }
                             Text(
-                                "-" + formatTime(duration - position),
+                                "-" + formatClock(duration - position),
                                 color = timeColor,
-                                fontSize = 12.sp,
+                                fontFamily = PlexMono,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
+                                letterSpacing = 0.06.em,
                                 modifier = if (scrubbing) Modifier.weight(1f) else Modifier,
                                 textAlign = TextAlign.End,
                             )
@@ -218,14 +220,21 @@ private fun InfoRow(kind: InfoKind, content: @Composable () -> Unit) {
     }
 }
 
-/** A thin bar with a round knob, used for both progress and volume. */
+/** A thin bar, white where it has played, with one orange tick as the playhead. Used for both progress and volume. */
 @Composable
 private fun Bar(fraction: Float) {
     val f = fraction.coerceIn(0f, 1f)
-    BoxWithConstraints(Modifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.CenterStart) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
         Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(TRACK)) {
-            Box(Modifier.fillMaxWidth(f).height(4.dp).background(Color.White))
+            Box(Modifier.fillMaxWidth(f).height(4.dp).background(BONE))
         }
-        Box(Modifier.offset(x = (maxWidth - 12.dp) * f).size(12.dp).clip(CircleShape).background(Color.White))
+        Box(
+            Modifier
+                .offset(x = (maxWidth - 3.dp) * f)
+                .size(3.dp, 14.dp)
+                .shadow(4.dp, RoundedCornerShape(2.dp), ambientColor = ORANGE, spotColor = ORANGE)
+                .clip(RoundedCornerShape(2.dp))
+                .background(ORANGE),
+        )
     }
 }

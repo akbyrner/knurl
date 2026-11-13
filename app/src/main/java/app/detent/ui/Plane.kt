@@ -52,9 +52,9 @@ private val WASH_FILTER = ColorFilter.colorMatrix(
  * [tall] gives Now Playing a bigger, stronger wash.
  */
 @Composable
-fun GraphitePlane(art: Album?, tall: Boolean, modifier: Modifier = Modifier) {
+fun GraphitePlane(art: Album?, tall: Boolean, modifier: Modifier = Modifier, wash: Boolean = true) {
     Box(modifier.background(GRAPHITE).clipToBounds()) {
-        if (art != null && Build.VERSION.SDK_INT >= 31) {
+        if (wash && art != null && Build.VERSION.SDK_INT >= 31) {
             // Tall enough to reach past where it fades out, so no edge of the picture ever shows. Colours are pushed
             // a little past natural so even a dark cover tints the plane visibly.
             Art(
@@ -63,7 +63,7 @@ fun GraphitePlane(art: Album?, tall: Boolean, modifier: Modifier = Modifier) {
                     .wrapContentSize(Alignment.TopStart, unbounded = true)
                     .offset(x = (-120).dp, y = (-160).dp)
                     .size(630.dp, if (tall) 880.dp else 760.dp)
-                    .graphicsLayer { alpha = if (tall) 0.9f else 0.8f }
+                    .graphicsLayer { alpha = if (tall) 0.7f else 0.6f }
                     .blur(70.dp, BlurredEdgeTreatment.Unbounded),
                 colorFilter = WASH_FILTER,
             )

@@ -22,6 +22,8 @@ It is a personal project built for one person's Pixel 10a. It runs on any Androi
 - **iPod-style menus** – Flow, Albums, Artists, Songs, Playlists, Sources, Shuffle Songs, Settings and Now Playing on
   frosted-glass rows with a bright white highlight. The look is called Graphite Glass: graphite with a faint grain, and a
   soft blurred wash of the playing cover at the top.
+- **Home screen** – a greeting, round Shuffle and Settings buttons, a Pinned shelf (Liked Songs, last played album, Recently Added, On This Phone) and the library list. Albums are a grid, Artists have an A–Z rail, Playlists and Sources have their own lists, and Settings has a theme picker plus click sound, haptic ticks and wheel speed.
+- **Widgets** – four home-screen widgets: small Now Playing (a knob whose orange arc is the song's progress), small Pinned, medium Now Playing with transport buttons, and large with the next three songs. They redraw when the song changes and every 30 seconds while playing.
 - **Now Playing** – large cover art over a glass card with song / artist / album, a progress bar with scrubbing, and a volume bar. Select
   switches the wheel between volume and scrubbing.
 - **Four corner buttons around the wheel** – shuffle (top-left), repeat (top-right), like (bottom-left) and Up Next

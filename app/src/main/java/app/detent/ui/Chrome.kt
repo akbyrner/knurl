@@ -54,6 +54,11 @@ val TEXT_SECONDARY = Color(0xFFA8A8AD)
 val TEXT_TERTIARY = Color(0xFF8E8E93)
 val GLYPH = Color(0xFFC4C4C4)
 
+// Knurl: bone type on graphite, with one orange tick as the only warm colour.
+val BONE = Color(0xFFECEBE6)
+val ORANGE = Color(0xFFFF6A1A)
+val LABEL_GRAY = Color(0xFF8E9097)
+
 /** The phone's real battery level, drawn as the small battery from the design (not a copy of the system's one). */
 @Composable
 fun BatteryIndicator(modifier: Modifier = Modifier) {
@@ -92,46 +97,67 @@ private fun readLevel(intent: Intent?): Float {
     return if (l >= 0 && scale > 0) l.toFloat() / scale else 0.7f
 }
 
+/** A small engraved caps label in Plex Mono, like the markings on the wheel. */
+@Composable
+fun MonoLabel(text: String, modifier: Modifier = Modifier, color: Color = LABEL_GRAY, size: Int = 11) {
+    Text(
+        text.uppercase(),
+        modifier = modifier,
+        color = color,
+        fontFamily = PlexMono,
+        fontSize = size.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 0.16.em,
+        lineHeight = (size + 3).sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
 /**
- * The title bar. Normally a big bold title on the left with the battery on the right; with [big] off (Now Playing)
- * a small spaced-out caps title in the middle, an optional glyph on the left.
+ * The title bar. A bold, wide caps title on the left with a small label under it and the battery on the right.
+ * With [big] off (Now Playing) it is a small label in the middle with an optional glyph at the left.
  */
 @Composable
-fun ScreenHeader(title: String?, modifier: Modifier = Modifier, big: Boolean = true, left: (@Composable () -> Unit)? = null) {
-    Box(modifier.fillMaxWidth().height(if (big) 40.dp else 36.dp)) {
-        if (left != null) Box(Modifier.align(Alignment.CenterStart).padding(start = 16.dp)) { left() }
-        if (title != null) {
-            if (big) {
-                Text(
-                    title,
-                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 20.dp, end = 64.dp),
-                    color = Color.White,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.03).em,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            } else {
-                Text(
-                    title.uppercase(),
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 64.dp),
-                    color = Color(0xFFB8B8BD),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.14.em,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+fun ScreenHeader(
+    title: String?,
+    modifier: Modifier = Modifier,
+    big: Boolean = true,
+    left: (@Composable () -> Unit)? = null,
+    label: String? = null,
+) {
+    if (!big) {
+        Box(modifier.fillMaxWidth().height(36.dp)) {
+            if (left != null) Box(Modifier.align(Alignment.CenterStart).padding(start = 16.dp)) { left() }
+            if (title != null) {
+                MonoLabel(title, Modifier.align(Alignment.Center).padding(horizontal = 64.dp), color = Color(0xFFB8B9BE))
             }
+            BatteryIndicator(Modifier.align(Alignment.CenterEnd).padding(end = 13.dp))
         }
-        BatteryIndicator(Modifier.align(Alignment.CenterEnd).padding(end = 13.dp))
+        return
+    }
+    Box(modifier.fillMaxWidth().height(if (label != null) 56.dp else 40.dp)) {
+        Column(Modifier.align(Alignment.CenterStart).padding(start = 20.dp, end = 64.dp)) {
+            Text(
+                (title ?: "").uppercase(),
+                color = BONE,
+                fontFamily = ArchivoExpanded,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.05.em,
+                lineHeight = 30.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (label != null) MonoLabel(label)
+        }
+        BatteryIndicator(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 13.dp))
     }
 }
 
 /** What is playing, as a card above the wheel on the menu screens. Tapping it (when [onClick] is given) opens Now Playing. */
 @Composable
-fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier, selected: Boolean = false, onClick: (() -> Unit)? = null) {
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -148,7 +174,7 @@ fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier, onCl
             .height(64.dp)
             .clip(shape)
             .background(GLASS)
-            .border(1.dp, GLASS_BORDER, shape)
+            .border(if (selected) 2.dp else 1.dp, if (selected) BONE else GLASS_BORDER, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Row(
@@ -168,11 +194,19 @@ fun MiniPlayer(controller: DetentController, modifier: Modifier = Modifier, onCl
                 )
                 Text(info.artist, color = TEXT_SECONDARY, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            Text(
+                formatTime(info.positionMs),
+                modifier = Modifier.padding(end = 10.dp),
+                color = TEXT_TERTIARY,
+                fontFamily = PlexMono,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
             PlayPauseGlyph(playing = info.isPlaying)
         }
         // A thin line along the bottom edge shows how far into the song it is.
         val fraction = if (info.durationMs > 0) (info.positionMs.toFloat() / info.durationMs).coerceIn(0f, 1f) else 0f
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(fraction).height(2.dp).background(Color.White))
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(fraction).height(2.dp).background(ORANGE))
     }
 }
 

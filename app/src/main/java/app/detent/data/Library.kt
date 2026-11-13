@@ -30,6 +30,8 @@ data class Track(
     val durationMs: Long,
     /** Null for demo tracks, which have nothing to play. */
     val uri: Uri?,
+    /** When the file arrived on the phone, in seconds since 1970. 0 when unknown. */
+    val addedAt: Long = 0,
 )
 
 /** Everything on the phone (or the demo set), already sorted the way the menus show it. */
@@ -43,6 +45,15 @@ class Library(val albums: List<Album>, val tracks: List<Track>, val isDemo: Bool
 
     /** All tracks, sorted by title for the Songs list. */
     val songs: List<Track> = tracks.sortedBy { it.title.lowercase() }
+
+    /** Albums sorted by title, for the Albums grid. */
+    val albumsByTitle: List<Album> by lazy { albums.sortedBy { it.title.lowercase() } }
+
+    /** Albums, newest arrival first. */
+    val recentAlbums: List<Album> by lazy {
+        val newest = tracks.groupBy { it.albumId }.mapValues { (_, list) -> list.maxOf { it.addedAt } }
+        albums.sortedByDescending { newest[it.id] ?: 0L }
+    }
 
     fun album(id: Long): Album? = albumById[id]
     fun track(id: Long): Track? = trackById[id]
@@ -62,6 +73,7 @@ fun loadLibrary(resolver: ContentResolver): Library {
         MediaStore.Audio.Media.ALBUM_ID,
         MediaStore.Audio.Media.TRACK,
         MediaStore.Audio.Media.DURATION,
+        MediaStore.Audio.Media.DATE_ADDED,
     )
     val tracks = mutableListOf<Track>()
     resolver.query(media, projection, "${MediaStore.Audio.Media.IS_MUSIC} != 0", null, null)?.use { c ->
@@ -72,6 +84,7 @@ fun loadLibrary(resolver: ContentResolver): Library {
         val albumId = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
         val track = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
         val duration = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+        val added = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
         while (c.moveToNext()) {
             val rowId = c.getLong(id)
             tracks += Track(
@@ -84,6 +97,7 @@ fun loadLibrary(resolver: ContentResolver): Library {
                 trackNumber = c.getInt(track) % 1000,
                 durationMs = c.getLong(duration),
                 uri = ContentUris.withAppendedId(media, rowId),
+                addedAt = c.getLong(added),
             )
         }
     }

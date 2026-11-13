@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -47,6 +48,12 @@ private object ArtCache {
     /** Counts art that arrived from outside (the Spotify app), so tiles waiting for it draw again. */
     var version by androidx.compose.runtime.mutableIntStateOf(0)
 }
+
+/** Counts covers that arrived from outside, so widgets redraw when one does. */
+val artVersion: Int get() = ArtCache.version
+
+/** A cover already in memory, for the home-screen widgets. */
+fun cachedArt(albumId: Long): android.graphics.Bitmap? = ArtCache.lru.get(albumId)?.asAndroidBitmap()
 
 /** Adds cover art that came as a ready bitmap, such as from the Spotify app. */
 fun putArt(albumId: Long, bitmap: android.graphics.Bitmap) {

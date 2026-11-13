@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_now_small">The cover with a knob that shows how far into the song you are. Tap the knob to pause.</string>
+    <string name="widget_pinned_small">Four pins. Tap one to play it.</string>
+    <string name="widget_now_medium">Cover, song, progress and transport buttons.</string>
+    <string name="widget_now_large">Now Playing with the next three songs from Up Next.</string>
+</resources>

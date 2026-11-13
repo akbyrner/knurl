@@ -41,6 +41,10 @@ sealed interface Screen {
     data object SpotifyRecent : Screen
     data class SpotifyAlbumTracks(val id: String, val name: String) : Screen
     data object Albums : Screen
+    /** Albums, newest arrival first. */
+    data object RecentAlbums : Screen
+    /** Liked Songs and the playlists, as a list. */
+    data object Playlists : Screen
     data object Artists : Screen
     data class ArtistAlbums(val artist: String) : Screen
     data class AlbumTracks(val albumId: Long) : Screen
@@ -97,9 +101,41 @@ class ListModel(
     val checkAt: ((Int) -> Boolean)? = null,
     /** Row height in dp when the default doesn't suit. */
     val rowHeightDp: Int? = null,
+    /** The small engraved line under the title. */
+    val label: String? = null,
+    /** A cover (or avatar) at the left of each row. */
+    val thumbAt: ((Int) -> Album?)? = null,
+    val roundThumbs: Boolean = false,
+    /** Marks the row of the song that is playing. */
+    val playingAt: ((Int) -> Boolean)? = null,
+    /** Drag grip at the right of each row, for Up Next. */
+    val grip: Boolean = false,
+    /** Subtitle drawn in small engraved capitals instead of plain text. */
+    val monoSubtitle: Boolean = false,
+    /** An A-Z rail down the right edge that follows the selected row. */
+    val rail: Boolean = false,
+    /** A small tag at the right of a row, such as ON or SIGN IN. */
+    val chipAt: ((Int) -> String?)? = null,
+    val iconAt: ((Int) -> RowIcon?)? = null,
 )
 
-class ListHeader(val title: String, val subtitle: String, val art: Album?)
+class ListHeader(val title: String, val subtitle: String, val art: Album?, val kind: String = "Album")
+
+/** What the home screen's wheel can land on, top to bottom. */
+enum class MenuEntry { Shuffle, Settings, PinLiked, PinAlbum, PinRecent, PinPhone, Flow, Albums, Artists, Songs, Playlists, Sources, NowPlaying }
+
+enum class ThemeChoice(val label: String) { GraphiteGlass("Graphite Glass"), Graphite("Graphite"), Silver("Silver") }
+
+/** The Settings screen's rows in wheel order: three themes, then the rest. */
+object SettingsRow {
+    const val THEMES = 3
+    const val CLICK = 3
+    const val HAPTIC = 4
+    const val SPEED = 5
+    const val SOURCES = 6
+    const val ABOUT = 7
+    const val SIGN_OUT = 8
+}
 
 /** A Spotify list on its way: still loading, failed with a short reason, or ready. */
 class SpotifyList<T>(val items: List<T> = emptyList(), val loading: Boolean = false, val error: String? = null) {
@@ -131,6 +167,19 @@ class DetentController(
 
     var nowPlayingMode by mutableStateOf(NowPlayingMode.Volume)
         private set
+
+    var theme by mutableStateOf(ThemeChoice.entries.getOrElse(prefs.getInt("theme", 0)) { ThemeChoice.GraphiteGlass })
+        private set
+    var clickSound by mutableStateOf(prefs.getBoolean("clickSound", true))
+        private set
+    var hapticTicks by mutableStateOf(prefs.getBoolean("hapticTicks", true))
+        private set
+    /** 0 slow, 1 medium, 2 fast: how far a finger travels around the ring for one detent. */
+    var wheelSpeed by mutableStateOf(prefs.getInt("wheelSpeed", 1).coerceIn(0, 2))
+        private set
+
+    val wheelSpeedLabel: String get() = listOf("Slow", "Medium", "Fast")[wheelSpeed]
+    val tickDegrees: Double get() = listOf(22.0, 16.0, 11.0)[wheelSpeed]
 
     init {
         player.setModes(shuffle, repeat.playerMode)
@@ -216,10 +265,14 @@ class DetentController(
         if (source == Source.Spotify) remote.pause()
         source = Source.Local
         prefs.edit().putString("lastSource", "local").apply()
+        tracks.getOrNull(startIndex)?.let { lastAlbumId = it.albumId; prefs.edit().putLong("lastAlbum", it.albumId).apply() }
         player.playQueue(tracks, startIndex)
     }
 
     private var spotifyStarting = false
+
+    /** The album last played from the phone, pinned on the home screen. */
+    private var lastAlbumId by mutableStateOf(prefs.getLong("lastAlbum", 0L).takeIf { it != 0L })
 
     /**
      * Starts a song, album or playlist in the Spotify app, in the background, then shows Now Playing.
@@ -290,6 +343,39 @@ class DetentController(
             return
         }
         withSpotify { if (forward) next() else previous() }
+    }
+
+    // --- Home-screen widgets ---------------------------------------------------------------------
+
+    val artVersion: Int get() = app.detent.ui.artVersion
+
+    fun widgetToggle() = togglePlayPause()
+    fun widgetSkip(forward: Boolean) = skip(forward)
+
+    class WidgetNext(val title: String, val artist: String, val art: Album?)
+
+    /** The next three songs, for the large widget. */
+    fun widgetUpcoming(): List<WidgetNext> = if (source == Source.Spotify) {
+        loadQueue()
+        spotifyQueue.value.items.take(3).map { WidgetNext(it.title, it.artist, thumbOfTrack(it)) }
+    } else {
+        localUpcoming().take(3).map { (_, t) -> WidgetNext(t.title, t.artist, library.album(t.albumId)) }
+    }
+
+    /** A tap on one of the four pins in the Pinned widget. */
+    fun playPin(index: Int) {
+        while (stack.size > 1) stack.removeAt(stack.lastIndex)
+        when (index) {
+            0 -> openMenu(MenuEntry.PinLiked)
+            1, 2 -> (if (index == 1) pinnedAlbum else pinnedRecent)?.let { a ->
+                val tracks = library.tracksOf(a.id)
+                if (tracks.any { it.uri != null }) {
+                    playLocal(tracks, 0)
+                    push(Screen.NowPlaying)
+                } else push(Screen.AlbumTracks(a.id))
+            }
+            else -> openMenu(MenuEntry.Shuffle)
+        }
     }
 
     private fun seekBy(deltaMs: Long) {
@@ -377,6 +463,13 @@ class DetentController(
         else -> spotifyAlbumList(screen)?.emptyText ?: "Nothing here yet"
     }
 
+    /** The small label at the top of a Flow screen. */
+    fun flowLabel(screen: Screen): String = when (screen) {
+        Screen.Flow -> "Flow · Albums"
+        Screen.SpotifyHome -> "Spotify · Library"
+        else -> "Spotify · ${flowTitle(screen)}"
+    }
+
     fun flowTitle(screen: Screen): String = when (screen) {
         Screen.SpotifyPlaylists -> "Playlists"
         Screen.SpotifyArtists -> "Artists"
@@ -450,7 +543,13 @@ class DetentController(
     }
 
     private fun spotifyTrackModel(title: String, list: SpotifyList<SpotifyTrack>, header: ListHeader? = null) = list.items.let { tracks ->
-        ListModel(title, tracks.size, { tracks[it].title }, { tracks[it].artist }, chevron = false, emptyText = list.emptyText, header = header)
+        ListModel(
+            title, tracks.size, { tracks[it].title }, { tracks[it].artist },
+            chevron = false, emptyText = list.emptyText, header = header,
+            rowHeightDp = if (header == null) 44 else null,
+            thumbAt = if (header == null) { i -> thumbOfTrack(tracks[i]) } else null,
+            playingAt = { tracks[it].uri == currentTrackKey },
+        )
     }
 
     /** The Now Playing button in the wheel's corner: opens Now Playing, or goes back from it. Returns true when something changed. */
@@ -579,10 +678,16 @@ class DetentController(
                 { list.items[it].artist },
                 chevron = false,
                 emptyText = if (list.loading || list.error != null) list.emptyText else "Nothing up next",
+                rowHeightDp = 44, grip = true, label = "Playing now",
+                thumbAt = { thumbOfTrack(list.items[it]) },
             )
         }
         val upcoming = localUpcoming()
-        return ListModel("Up Next", upcoming.size, { upcoming[it].second.title }, { upcoming[it].second.artist }, chevron = false, emptyText = "Nothing up next")
+        return ListModel(
+            "Up Next", upcoming.size, { upcoming[it].second.title }, { upcoming[it].second.artist },
+            chevron = false, emptyText = "Nothing up next", rowHeightDp = 44, grip = true, label = "Playing now",
+            thumbAt = { library.album(upcoming[it].second.albumId) },
+        )
     }
 
     /** The shuffle button beside the wheel. */
@@ -603,7 +708,7 @@ class DetentController(
         if (remote.connected) pushModesToSpotify()
     }
 
-    private val stack = mutableStateListOf(Entry(Screen.MainMenu, 0))
+    private val stack = mutableStateListOf(Entry(Screen.MainMenu, MenuEntry.Flow.ordinal))
 
     val current: Entry get() = stack.last()
 
@@ -613,42 +718,96 @@ class DetentController(
         for (i in stack.indices) stack[i] = stack[i].copy(selected = stack[i].selected.coerceIn(0, maxOf(0, rowCount(stack[i].screen) - 1)))
     }
 
-    private fun mainMenuItems(): List<String> = buildList {
-        add("Flow")
-        add("Albums")
-        add("Artists")
-        add("Songs")
-        add("Playlists")
-        add("Sources")
-        add("Shuffle Songs")
-        add("Settings")
-        if (hasNowPlaying) add("Now Playing")
+    fun menuEntries(): List<MenuEntry> = MenuEntry.entries.filter { it != MenuEntry.NowPlaying || hasNowPlaying }
+
+    /** The tiles on the home screen's Pinned shelf. */
+    val pinnedLiked: Album get() = homeAlbum(homeTiles[0])
+    val pinnedAlbum: Album? get() = lastAlbumId?.let { library.album(it) } ?: library.albums.firstOrNull()
+    val pinnedRecent: Album? get() = library.recentAlbums.firstOrNull()
+
+    /** "Good morning", "Good afternoon" or "Good evening". */
+    fun greeting(): String {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return when {
+            hour < 5 -> "Good evening"
+            hour < 12 -> "Good morning"
+            hour < 18 -> "Good afternoon"
+            else -> "Good evening"
+        }
     }
 
-    private val settingsItems: List<String>
-        get() = listOf("Shuffle", "Repeat") + if (spotifySignedIn) listOf("Sign out of Spotify") else emptyList()
+    /** How many music sources are switched on, for the Settings line. */
+    val sourcesOn: Int get() = 1 + if (spotifySignedIn) 1 else 0
+
+    /** A tap on a Settings row: land on it and press it, as the wheel would. */
+    fun openSetting(row: Int): Boolean {
+        if (current.screen != Screen.Settings || row !in 0 until settingsCount) return false
+        setSelected(row)
+        select()
+        return true
+    }
+
+    private val settingsCount: Int get() = if (spotifySignedIn) SettingsRow.SIGN_OUT + 1 else SettingsRow.SIGN_OUT
+
+    private fun selectTheme(t: ThemeChoice) {
+        if (t == ThemeChoice.Silver) {
+            showNotice("Silver is coming later")
+            return
+        }
+        theme = t
+        prefs.edit().putInt("theme", t.ordinal).apply()
+    }
+
+    private fun cycleWheelSpeed() {
+        wheelSpeed = (wheelSpeed + 1) % 3
+        prefs.edit().putInt("wheelSpeed", wheelSpeed).apply()
+    }
+
+    /** The albums behind a grid screen. */
+    fun gridAlbums(screen: Screen): List<Album>? = when (screen) {
+        Screen.Albums -> library.albumsByTitle
+        Screen.RecentAlbums -> library.recentAlbums
+        is Screen.ArtistAlbums -> library.albumsBy(screen.artist)
+        else -> null
+    }
+
+    fun gridTitle(screen: Screen): String = when (screen) {
+        Screen.Albums -> "Albums"
+        Screen.RecentAlbums -> "Recently Added"
+        is Screen.ArtistAlbums -> screen.artist
+        else -> ""
+    }
+
+    fun gridLabel(screen: Screen): String = when (screen) {
+        Screen.Albums -> "A–Z · by title"
+        Screen.RecentAlbums -> "Newest first"
+        else -> "Albums"
+    }
+
+    private fun thumbOfTrack(t: SpotifyTrack) = Album(id = (t.imageUrl ?: t.uri).hashCode().toLong() or SPOTIFY_ID_BIT, title = t.albumName, artist = t.artist, artUrl = t.imageUrl)
+
+    /** Whether this phone track is the one playing. */
+    private fun isPlayingLocal(track: app.detent.data.Track) = source != Source.Spotify && player.currentTrackId == track.id
 
     /** Where music can come from: a title and a one-line description each. */
+    private class SourceItem(val title: String, val subtitle: String, val icon: RowIcon)
+
     private val sourceItems = listOf(
-        "This phone" to "Music files stored on the phone",
-        "Navidrome or Subsonic" to "Streams from your own server",
-        "Spotify" to "Plays in the Spotify app, controlled here",
-        "Apple Music" to "Later",
-        "YouTube Music" to "Later",
+        SourceItem("This phone", "Music files on the device", RowIcon.Phone),
+        SourceItem("Navidrome or Subsonic", "Your own server", RowIcon.Server),
+        SourceItem("Spotify", "Needs a Premium account", RowIcon.Spotify),
+        SourceItem("Apple Music", "Not yet", RowIcon.Songs),
+        SourceItem("YouTube Music", "Not yet", RowIcon.YouTube),
     )
 
     fun listModel(screen: Screen): ListModel? = when (screen) {
-        Screen.MainMenu -> mainMenuItems().let { items ->
-            ListModel("Detent", items.size, { items[it] }, chevron = true)
-        }
-        Screen.Albums -> library.albums.let { albums ->
-            ListModel("Albums", albums.size, { albums[it].title }, { albums[it].artist })
-        }
         Screen.Artists -> library.artists.let { artists ->
-            ListModel("Artists", artists.size, { artists[it] })
-        }
-        is Screen.ArtistAlbums -> library.albumsBy(screen.artist).let { albums ->
-            ListModel(screen.artist, albums.size, { albums[it].title })
+            ListModel(
+                "Artists", artists.size, { artists[it] },
+                { i -> library.albumsBy(artists[i]).let { a -> if (a.size == 1) a[0].title else "${a.size} albums" } },
+                chevron = false, label = "A–Z", rail = true, roundThumbs = true, rowHeightDp = 48,
+                thumbAt = { library.albumsBy(artists[it]).firstOrNull() },
+            )
         }
         is Screen.AlbumTracks -> library.tracksOf(screen.albumId).let { tracks ->
             val album = library.album(screen.albumId)
@@ -659,32 +818,45 @@ class DetentController(
                 chevron = false,
                 header = ListHeader(album?.title.orEmpty(), album?.artist.orEmpty(), album),
                 numberAt = { (tracks[it].trackNumber.takeIf { n -> n > 0 } ?: (it + 1)).toString() },
+                playingAt = { isPlayingLocal(tracks[it]) },
             )
         }
         Screen.Songs -> library.songs.let { songs ->
-            ListModel("Songs", songs.size, { songs[it].title }, { songs[it].artist }, chevron = false)
+            ListModel(
+                "Songs", songs.size, { songs[it].title }, { "${songs[it].artist} · ${songs[it].albumTitle}" },
+                chevron = false, label = "A–Z · by title", rowHeightDp = 44,
+                thumbAt = { library.album(songs[it].albumId) },
+                playingAt = { isPlayingLocal(songs[it]) },
+            )
+        }
+        Screen.Playlists -> playlists.value.items.let { items ->
+            ListModel(
+                "Playlists", items.size + 1,
+                { if (it == 0) "Liked Songs" else items[it - 1].name },
+                { if (it == 0) "Spotify" else "Spotify · ${items[it - 1].trackCount} songs" },
+                chevron = false, label = "All sources", rowHeightDp = 56, monoSubtitle = true,
+                thumbAt = { if (it == 0) pinnedLiked else items[it - 1].let { p -> spotifyTile(p.id, p.name, "", p.imageUrl) } },
+            )
         }
         Screen.Queue -> queueModel()
-        Screen.Settings -> ListModel(
-            "Settings",
-            settingsItems.size,
-            { settingsItems[it] },
-            valueAt = {
-                when (it) {
-                    0 -> if (shuffle) "On" else "Off"
-                    1 -> repeat.label
-                    else -> ""
-                }
-            },
-        )
         Screen.Sources -> ListModel(
             "Sources",
             sourceItems.size,
-            { sourceItems[it].first },
-            { sourceItems[it].second },
-            rowHeightDp = 64,
-            checkAt = { it == 0 },
+            { sourceItems[it].title },
+            { sourceItems[it].subtitle },
+            rowHeightDp = 62,
+            chevron = false,
             dimAt = { it >= 3 },
+            label = "Where your music comes from",
+            iconAt = { sourceItems[it].icon },
+            chipAt = { i ->
+                when (i) {
+                    0 -> "ON"
+                    1 -> "LATER"
+                    2 -> if (spotifySignedIn) "ON" else "SIGN IN"
+                    else -> "LATER"
+                }
+            },
         )
         Screen.SpotifyHome -> spotifyHomeItems().let { items ->
             ListModel("Spotify", items.size, { items[it] }, chevron = items.size > 1)
@@ -699,13 +871,14 @@ class DetentController(
                     screen.name,
                     if (tracks.loading) "" else "${tracks.items.size} songs",
                     playlist?.let { spotifyTile(it.id, it.name, "", it.imageUrl) },
+                    "Playlist",
                 ),
             )
         }
         Screen.SpotifyLiked -> spotifyTrackModel(
             "Liked Songs",
             liked.value,
-            ListHeader("Liked Songs", if (liked.value.loading) "" else "${liked.value.items.size} songs", homeAlbum(homeTiles[0])),
+            ListHeader("Liked Songs", if (liked.value.loading) "" else "${liked.value.items.size} songs", homeAlbum(homeTiles[0]), "Playlist"),
         )
         is Screen.SpotifyAlbumTracks -> {
             val album = albumInfo[screen.id]
@@ -720,16 +893,21 @@ class DetentController(
                     emptyText = list.emptyText,
                     header = ListHeader(screen.name, album?.artist.orEmpty(), flowAlbum),
                     numberAt = { (it + 1).toString() },
+                    playingAt = { tracks[it].uri == currentTrackKey },
                 )
             }
         }
+        Screen.MainMenu, Screen.Settings, Screen.Albums, Screen.RecentAlbums, is Screen.ArtistAlbums,
         Screen.Flow, Screen.SpotifyAlbumsFlow, Screen.SpotifyPlaylists, Screen.SpotifyArtists, Screen.SpotifyRecent,
         is Screen.SpotifyArtistAlbums, Screen.NowPlaying -> null
     }
 
     private fun rowCount(screen: Screen): Int = when (screen) {
         Screen.NowPlaying -> 0
-        else -> if (isFlowScreen(screen)) flowTiles(screen).size else listModel(screen)?.count ?: 0
+        Screen.MainMenu -> menuEntries().size
+        Screen.Settings -> settingsCount
+        else -> gridAlbums(screen)?.size
+            ?: if (isFlowScreen(screen)) flowTiles(screen).size else listModel(screen)?.count ?: 0
     }
 
     private fun push(screen: Screen) {
@@ -782,32 +960,60 @@ class DetentController(
         return true
     }
 
+    /** A tap on something on the home screen: land on it and open it, as the wheel would. */
+    fun openMenu(item: MenuEntry): Boolean {
+        if (current.screen != Screen.MainMenu) return false
+        val index = menuEntries().indexOf(item)
+        if (index < 0) return false
+        setSelected(index)
+        select()
+        return true
+    }
+
     private fun select() {
         val entry = current
         val i = entry.selected
         when (val screen = entry.screen) {
-            Screen.MainMenu -> when (mainMenuItems().getOrNull(i)) {
-                "Flow" -> push(Screen.Flow)
-                "Albums" -> push(Screen.Albums)
-                "Artists" -> push(Screen.Artists)
-                "Songs" -> push(Screen.Songs)
-                "Shuffle Songs" -> {
+            Screen.MainMenu -> when (menuEntries().getOrNull(i)) {
+                MenuEntry.Flow -> push(Screen.Flow)
+                MenuEntry.Albums -> push(Screen.Albums)
+                MenuEntry.Artists -> push(Screen.Artists)
+                MenuEntry.Songs, MenuEntry.PinPhone -> push(Screen.Songs)
+                MenuEntry.Shuffle -> {
                     if (library.tracks.any { it.uri != null }) {
                         playLocal(library.tracks.shuffled(), 0)
                         push(Screen.NowPlaying)
                     }
                 }
-                "Playlists" -> {
+                MenuEntry.Playlists -> {
                     if (spotifySignedIn) {
                         load(playlists) { spotifyApi.playlists() }
-                        push(Screen.SpotifyPlaylists)
+                        push(Screen.Playlists)
                     } else {
                         showNotice("Playlists come from Spotify. Sign in under Sources.")
                     }
                 }
-                "Sources" -> push(Screen.Sources)
-                "Settings" -> push(Screen.Settings)
-                "Now Playing" -> push(Screen.NowPlaying)
+                MenuEntry.PinLiked -> {
+                    if (spotifySignedIn) {
+                        load(liked) { spotifyApi.likedSongs() }
+                        push(Screen.SpotifyLiked)
+                    } else {
+                        showNotice("Liked Songs come from Spotify. Sign in under Sources.")
+                    }
+                }
+                MenuEntry.PinAlbum -> pinnedAlbum?.let { push(Screen.AlbumTracks(it.id)) }
+                MenuEntry.PinRecent -> push(Screen.RecentAlbums)
+                MenuEntry.Sources -> push(Screen.Sources)
+                MenuEntry.Settings -> push(Screen.Settings)
+                MenuEntry.NowPlaying -> push(Screen.NowPlaying)
+                null -> {}
+            }
+            Screen.Playlists -> if (i == 0) {
+                load(liked) { spotifyApi.likedSongs() }
+                push(Screen.SpotifyLiked)
+            } else playlists.value.items.getOrNull(i - 1)?.let { p ->
+                loadKeyed(playlistTracks, p.id) { spotifyApi.playlistTracks(p.id) }
+                push(Screen.SpotifyPlaylistTracks(p.id, p.name))
             }
             Screen.Sources -> when (i) {
                 0 -> showNotice("Already playing music from this phone")
@@ -863,17 +1069,19 @@ class DetentController(
                 // Liked Songs has no playlist address to jump into, so play the song and queue the next few behind it.
                 if (i in all.indices) playSpotify(all[i].uri, queueAfter = all.drop(i + 1).take(30).map { it.uri })
             }
-            Screen.Settings -> {
-                when (i) {
-                    0 -> toggleShuffle()
-                    1 -> cycleRepeat()
-                    else -> signOutSpotify()
-                }
+            Screen.Settings -> when (i) {
+                in 0 until SettingsRow.THEMES -> selectTheme(ThemeChoice.entries[i])
+                SettingsRow.CLICK -> { clickSound = !clickSound; prefs.edit().putBoolean("clickSound", clickSound).apply() }
+                SettingsRow.HAPTIC -> { hapticTicks = !hapticTicks; prefs.edit().putBoolean("hapticTicks", hapticTicks).apply() }
+                SettingsRow.SPEED -> cycleWheelSpeed()
+                SettingsRow.SOURCES -> push(Screen.Sources)
+                SettingsRow.ABOUT -> showNotice("Detent 0.1")
+                else -> signOutSpotify()
             }
             Screen.Flow -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
-            Screen.Albums -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
+            Screen.Albums, Screen.RecentAlbums, is Screen.ArtistAlbums ->
+                gridAlbums(screen)?.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
             Screen.Artists -> library.artists.getOrNull(i)?.let { push(Screen.ArtistAlbums(it)) }
-            is Screen.ArtistAlbums -> library.albumsBy(screen.artist).getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
             is Screen.AlbumTracks -> {
                 if (library.tracksOf(screen.albumId).any { it.uri != null }) {
                     playLocal(library.tracksOf(screen.albumId), i)
@@ -909,6 +1117,12 @@ class DetentController(
 
 /** Marks album ids made from Spotify ids so they can't collide with MediaStore's small integers. */
 private const val SPOTIFY_ID_BIT = 1L shl 62
+
+/** Minutes and seconds with a leading zero, as the Knurl screens show them: 01:47. */
+fun formatClock(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0)
+    return "%02d:%02d".format(total / 60, total % 60)
+}
 
 fun formatTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)

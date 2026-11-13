@@ -40,12 +40,24 @@ import androidx.compose.ui.unit.sp
 fun DetentApp(controller: DetentController) {
     val haptics = remember { Haptics(controller.appContext) }
 
+    val view = androidx.compose.ui.platform.LocalView.current
+    // One place for the feel of a press, so Settings can switch the sound and the buzz off.
+    val tickFeel = {
+        if (controller.hapticTicks) haptics.tick()
+        if (controller.clickSound) view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+    }
+    val pressFeel = {
+        if (controller.hapticTicks) haptics.press()
+        if (controller.clickSound) view.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+    }
+
     CompositionLocalProvider(LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = InterFamily)) {
     BoxWithConstraints(Modifier.fillMaxSize().background(GRAPHITE)) {
         GraphitePlane(
             art = controller.nowPlayingInfo(System.currentTimeMillis())?.art,
             tall = controller.current.screen == Screen.NowPlaying,
             modifier = Modifier.fillMaxSize(),
+            wash = controller.theme == ThemeChoice.GraphiteGlass,
         )
         // The wheel is sized from the phone, so the view above it keeps about two thirds of the height.
         val wheel = minOf(maxWidth * 0.62f, maxHeight * 0.30f)
@@ -57,39 +69,49 @@ fun DetentApp(controller: DetentController) {
             // The status bar is hidden, so only the camera cut-out needs room at the top.
             val screenModifier = Modifier.weight(1f).fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.Top))
-            when (val screen = entry.screen) {
-                Screen.NowPlaying -> NowPlayingScreen(controller, controller.nowPlayingMode, screenModifier)
-                else -> if (controller.isFlowScreen(screen)) {
+            val screen = entry.screen
+            val grid = controller.gridAlbums(screen)
+            when {
+                screen == Screen.NowPlaying -> NowPlayingScreen(controller, controller.nowPlayingMode, screenModifier)
+                screen == Screen.MainMenu -> {
+                    // The home screen keeps a small "now playing" card above the wheel while something plays.
+                    // The card sits centred in the space between the last row and the controls.
+                    MenuWithMiniPlayer(
+                        list = { HomeScreen(controller, entry.selected, onTap = pressFeel) },
+                        mini = {
+                            MiniPlayer(
+                                controller,
+                                Modifier.padding(horizontal = 16.dp),
+                                selected = controller.menuEntries().getOrNull(entry.selected) == MenuEntry.NowPlaying,
+                                onClick = { if (controller.toggleNowPlaying()) pressFeel() },
+                            )
+                        },
+                        modifier = screenModifier,
+                    )
+                }
+                screen == Screen.Settings -> SettingsScreen(controller, entry.selected, screenModifier, onTap = pressFeel)
+                grid != null -> AlbumGridScreen(controller.gridTitle(screen), controller.gridLabel(screen), grid, entry.selected, screenModifier)
+                controller.isFlowScreen(screen) -> {
                     val tiles = controller.flowTiles(screen)
                     if (tiles.isEmpty()) {
                         ListScreen(ListModel(controller.flowTitle(screen), 0, { "" }, emptyText = controller.flowEmptyText(screen)), 0, screenModifier)
                     } else {
                         // Keyed by screen so each carousel starts at its own selection instead of sweeping from the last one.
-                        androidx.compose.runtime.key(screen) { AlbumFlow(tiles, entry.selected, screenModifier) }
+                        androidx.compose.runtime.key(screen) { AlbumFlow(tiles, entry.selected, screenModifier, label = controller.flowLabel(screen), dots = screen == Screen.SpotifyHome) }
                     }
-                } else {
+                }
+                else -> {
                     val model = controller.listModel(screen)
-                    if (model != null) {
-                        // Menus keep a small "now playing" card above the wheel while something plays.
-                        if (controller.hasNowPlaying) {
-                            // The card sits centred in the space between the last row and the controls, with the
-                            // same 10dp side margins as the rows. A long list pushes it down to the bottom.
-                            MenuWithMiniPlayer(
-                                list = { ListScreen(model, entry.selected) },
-                                mini = {
-                                    MiniPlayer(
-                                        controller,
-                                        Modifier.padding(horizontal = 10.dp),
-                                        onClick = { if (controller.toggleNowPlaying()) haptics.press() },
-                                    )
-                                },
-                                modifier = screenModifier,
-                            )
-                        } else {
-                            ListScreen(model, entry.selected, screenModifier)
-                        }
-                    } else {
+                    if (model == null) {
                         Box(screenModifier)
+                    } else if (screen == Screen.Queue) {
+                        // What is playing now sits above the rows that follow it.
+                        ListScreen(model, entry.selected, screenModifier, top = {
+                            MiniPlayer(controller, Modifier.padding(horizontal = 12.dp))
+                            MonoLabel("Up next", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 8.dp))
+                        })
+                    } else {
+                        ListScreen(model, entry.selected, screenModifier)
                     }
                 }
             }
@@ -100,11 +122,12 @@ fun DetentApp(controller: DetentController) {
             ) {
                 ClickWheel(
                     modifier = Modifier.size(wheel),
+                    tickDegrees = controller.tickDegrees,
                     onTick = { dir ->
-                        if (controller.tick(dir)) haptics.tick()
+                        if (controller.tick(dir)) tickFeel()
                     },
                     onButton = { btn ->
-                        if (controller.button(btn)) haptics.press()
+                        if (controller.button(btn)) pressFeel()
                     },
                 )
                 // Shuffle and repeat sit at the wheel's top corners, on the same black plane.
@@ -116,7 +139,7 @@ fun DetentApp(controller: DetentController) {
                     size = modeSize,
                     onClick = {
                         controller.toggleShuffle()
-                        haptics.press()
+                        pressFeel()
                     },
                     modifier = Modifier.align(Alignment.TopStart).padding(start = 18.dp).offset(y = (-12).dp),
                 )
@@ -132,7 +155,7 @@ fun DetentApp(controller: DetentController) {
                     badge = if (controller.repeat == RepeatSetting.One) "1" else null,
                     onClick = {
                         controller.cycleRepeat()
-                        haptics.press()
+                        pressFeel()
                     },
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 18.dp).offset(y = (-12).dp),
                 )
@@ -143,7 +166,7 @@ fun DetentApp(controller: DetentController) {
                     description = if (controller.currentLiked) "Liked" else "Like",
                     size = modeSize,
                     onClick = {
-                        if (controller.toggleLike()) haptics.press()
+                        if (controller.toggleLike()) pressFeel()
                     },
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = 18.dp),
                 )
@@ -153,7 +176,7 @@ fun DetentApp(controller: DetentController) {
                     description = "Up Next",
                     size = modeSize,
                     onClick = {
-                        if (controller.toggleQueue()) haptics.press()
+                        if (controller.toggleQueue()) pressFeel()
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 18.dp),
                 )
@@ -176,6 +199,8 @@ fun DetentApp(controller: DetentController) {
                 textAlign = TextAlign.Center,
             )
         }
+
+        SplashOverlay()
     }
     }
 }

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The knob: a spun-steel disc, a dark cap and one orange tick, inside the adaptive icon's safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- soft shadow under the disc -->
+    <path android:pathData="M54,57m-31,0a31,31 0,1 1,62 0a31,31 0,1 1,-62 0" android:fillColor="#59000000" />
+    <path android:pathData="M54,54m-31,0a31,31 0,1 1,62 0a31,31 0,1 1,-62 0">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="30" android:startY="26" android:endX="80" android:endY="84">
+                <item android:offset="0" android:color="#FFECEEF1" />
+                <item android:offset="0.35" android:color="#FF9A9DA4" />
+                <item android:offset="0.6" android:color="#FFE4E6E9" />
+                <item android:offset="1" android:color="#FF7F8289" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- the ridged edge, as a thin darker ring -->
+    <path android:pathData="M54,54m-28.6,0a28.6,28.6 0,1 1,57.2 0a28.6,28.6 0,1 1,-57.2 0" android:strokeColor="#40000000" android:strokeWidth="2.2" />
+    <path android:pathData="M54,54m-26.6,0a26.6,26.6 0,1 1,53.2 0a26.6,26.6 0,1 1,-53.2 0" android:strokeColor="#59FFFFFF" android:strokeWidth="0.5" />
+    <!-- the cap -->
+    <path android:pathData="M54,54m-13,0a13,13 0,1 1,26 0a13,13 0,1 1,-26 0">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="54" android:centerY="47" android:gradientRadius="26">
+                <item android:offset="0" android:color="#FF3A3A40" />
+                <item android:offset="1" android:color="#FF121214" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- the detent -->
+    <path android:pathData="M52.2,26.6h3.6a1.8,1.8 0 0 1 1.8,1.8v6.2a1.8,1.8 0 0 1 -1.8,1.8h-3.6a1.8,1.8 0 0 1 -1.8,-1.8v-6.2a1.8,1.8 0 0 1 1.8,-1.8z" android:fillColor="#FFFF6A1A" />
+</vector>

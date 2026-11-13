@@ -55,6 +55,10 @@ class MainActivity : ComponentActivity() {
     /** Spotify's login page sends the browser back as app.detent://spotify-callback?code=... */
     private fun handleRedirect(intent: Intent?) {
         if (BuildConfig.DEBUG && intent?.action == "app.detent.DEBUG_CONNECT_SPOTIFY") controller.debugConnectRemote()
+        intent?.getIntExtra(app.detent.widget.WidgetRender.EXTRA_PIN, -1)?.takeIf { it >= 0 }?.let {
+            controller.playPin(it)
+            intent.removeExtra(app.detent.widget.WidgetRender.EXTRA_PIN)
+        }
         val data = intent?.data ?: return
         if (data.scheme == "app.detent" && data.host == "spotify-callback") controller.onAuthRedirect(data)
     }

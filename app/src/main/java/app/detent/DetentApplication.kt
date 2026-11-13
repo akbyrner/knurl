@@ -6,6 +6,8 @@ import android.os.Bundle
 import app.detent.playback.PlayerController
 import app.detent.ui.DetentController
 import java.lang.ref.WeakReference
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /**
  * Holds the one DetentController for the whole app process. If Android recreates the Activity (it does when the
@@ -21,6 +23,24 @@ class DetentApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Keep the home-screen widgets in step with what is playing.
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+        scope.launch {
+            androidx.compose.runtime.snapshotFlow {
+                val i = controller.nowPlayingInfo(0L)
+                listOf(controller.currentTrackKey, i?.isPlaying, i?.title, controller.artVersion)
+            }.collectLatest {
+                kotlinx.coroutines.delay(400)
+                app.detent.widget.WidgetSync.push(this@DetentApplication, controller)
+            }
+        }
+        scope.launch {
+            // While something plays, redraw now and then so the progress follows along.
+            while (true) {
+                kotlinx.coroutines.delay(30_000)
+                if (controller.nowPlayingInfo(System.currentTimeMillis())?.isPlaying == true) app.detent.widget.WidgetSync.push(this@DetentApplication, controller)
+            }
+        }
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) { visible = WeakReference(activity) }
             override fun onActivityPaused(activity: Activity) { if (visible?.get() === activity) visible = null }
