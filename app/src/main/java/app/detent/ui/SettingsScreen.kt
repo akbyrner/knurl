@@ -60,7 +60,7 @@ fun SettingsScreen(controller: DetentController, selected: Int, modifier: Modifi
         MonoLabel("General", Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp))
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SettingRow("Sources", selected == SettingsRow.SOURCES, value = "${controller.sourcesOn} on", chevron = true) { press(SettingsRow.SOURCES) }
-            SettingRow("About Detent", selected == SettingsRow.ABOUT, value = "v0.1", chevron = true) { press(SettingsRow.ABOUT) }
+            SettingRow("About Knurl", selected == SettingsRow.ABOUT, value = "v0.1", chevron = true) { press(SettingsRow.ABOUT) }
             if (controller.spotifySignedIn) {
                 SettingRow("Sign out of Spotify", selected == SettingsRow.SIGN_OUT) { press(SettingsRow.SIGN_OUT) }
             }

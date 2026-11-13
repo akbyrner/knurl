@@ -97,7 +97,7 @@ fun SplashOverlay() {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 KnurlMark(160.dp)
                 Text(
-                    "DETENT",
+                    "KNURL",
                     modifier = Modifier.padding(top = 36.dp),
                     color = BONE,
                     fontFamily = ArchivoExpanded,

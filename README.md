@@ -1,9 +1,11 @@
-# Detent
+# Knurl
 
-**The phone is the iPod.** Detent is an Android music player that turns your whole screen into one continuous graphite
+_Formerly called Detent; the code package is still `app.detent`._
+
+**The phone is the iPod.** Knurl is an Android music player that turns your whole screen into one continuous graphite
 plane with a Cover Flow style album carousel and a click wheel at the bottom. There is no fake device frame: the
 phone itself is the player. It plays music from the phone and drives the Spotify app as a remote control, with the
-library, queue, likes and now-playing info all shown in Detent's own screens.
+library, queue, likes and now-playing info all shown in Knurl's own screens.
 
 It is a personal project built for one person's Pixel 10a. It runs on any Android 10+ phone.
 
@@ -29,12 +31,12 @@ It is a personal project built for one person's Pixel 10a. It runs on any Androi
 - **Four corner buttons around the wheel** – shuffle (top-left), repeat (top-right), like (bottom-left) and Up Next
   (bottom-right). They glow blue when on; repeat-one shows a "1" badge.
 - **Spotify, as a remote control** – browse Liked Songs, playlists, saved albums, followed artists and recently
-  played albums as covers, then play them. The official Spotify app does the playing in the background; Detent
+  played albums as covers, then play them. The official Spotify app does the playing in the background; Knurl
   controls it and mirrors the track, cover art, position, shuffle and repeat. Requires Spotify Premium.
 - **Like and Up Next** – like or unlike the song that is playing (Spotify Liked Songs; a favourites list inside
-  Detent for music on the phone) and see what plays next.
+  Knurl for music on the phone) and see what plays next.
 - **Mini player** – a card on the menu screens shows what is playing; tap it to open Now Playing.
-- **Reopen where you left off** – close Detent while Spotify keeps playing and it reconnects when you come back.
+- **Reopen where you left off** – close Knurl while Spotify keeps playing and it reconnects when you come back.
 - Fullscreen with the Inter typeface; the camera cut-out is respected.
 
 ## Controls
@@ -115,7 +117,7 @@ Not built yet:
 
 - [Inter](https://rsms.me/inter/) typeface, SIL Open Font License 1.1 (`licenses/Inter-OFL.txt`).
 - Spotify App Remote SDK and Web API, used under [Spotify's developer terms](https://developer.spotify.com/terms).
-  Detent does not stream or decode Spotify audio; the Spotify app does.
+  Knurl does not stream or decode Spotify audio; the Spotify app does.
 - AndroidX Media3 and Jetpack Compose (Apache 2.0), Gson (Apache 2.0).
 
 The project itself is a private personal project with no open-source licence: all rights reserved.

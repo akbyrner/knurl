@@ -184,7 +184,7 @@ object WidgetRender {
 
     private fun fillText(rv: RemoteViews, s: WidgetState) {
         rv.setTextViewText(R.id.title, if (s.has) s.title else "Nothing playing")
-        rv.setTextViewText(R.id.artist, if (s.has) s.artist else "Open Detent to pick something")
+        rv.setTextViewText(R.id.artist, if (s.has) s.artist else "Open Knurl to pick something")
     }
 
     private fun transport(c: Context, rv: RemoteViews, s: WidgetState) {
@@ -212,7 +212,7 @@ object WidgetRender {
         val s = readState(c)
         val rv = RemoteViews(c.packageName, R.layout.widget_now_large)
         rv.setTextViewText(R.id.title, if (s.has) s.title else "Nothing playing")
-        rv.setTextViewText(R.id.artist, if (s.has) "${s.artist} · ${s.album}" else "Open Detent to pick something")
+        rv.setTextViewText(R.id.artist, if (s.has) "${s.artist} · ${s.album}" else "Open Knurl to pick something")
         rv.setImageViewBitmap(R.id.art, cover(c, "art", dp(c, 120f).toInt() * 2, dp(c, 14f) * 2, s.album.ifEmpty { s.title }))
         rv.setImageViewBitmap(R.id.mark, mark(dp(c, 14f).toInt() * 2))
         rv.setProgressBar(R.id.progress, 1000, (s.fraction * 1000).toInt(), false)

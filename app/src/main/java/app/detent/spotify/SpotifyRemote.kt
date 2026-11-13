@@ -125,8 +125,8 @@ class SpotifyRemote(
     private fun explain(error: Throwable): String = when (error) {
         is CouldNotFindSpotifyApp -> "The Spotify app isn't installed"
         is NotLoggedInException -> "Open the Spotify app and sign in"
-        is UserNotAuthorizedException -> "Spotify hasn't approved Detent yet"
-        is AuthenticationFailedException -> "Spotify doesn't recognise Detent. Check its package name and fingerprint in the Spotify dashboard."
+        is UserNotAuthorizedException -> "Spotify hasn't approved Knurl yet"
+        is AuthenticationFailedException -> "Spotify doesn't recognise Knurl. Check its package name and fingerprint in the Spotify dashboard."
         is OfflineModeException -> "The Spotify app is in offline mode"
         is SpotifyConnectionTerminatedException, is SpotifyDisconnectedException -> "The Spotify app disconnected"
         else -> error.message?.take(80) ?: "Couldn't reach the Spotify app"

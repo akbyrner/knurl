@@ -1075,7 +1075,7 @@ class DetentController(
                 SettingsRow.HAPTIC -> { hapticTicks = !hapticTicks; prefs.edit().putBoolean("hapticTicks", hapticTicks).apply() }
                 SettingsRow.SPEED -> cycleWheelSpeed()
                 SettingsRow.SOURCES -> push(Screen.Sources)
-                SettingsRow.ABOUT -> showNotice("Detent 0.1")
+                SettingsRow.ABOUT -> showNotice("Knurl 0.1")
                 else -> signOutSpotify()
             }
             Screen.Flow -> library.albums.getOrNull(i)?.let { push(Screen.AlbumTracks(it.id)) }
