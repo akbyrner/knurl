@@ -11,18 +11,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Android 11+ hides other apps unless asked for: Detent needs to see the Spotify app. -->
+    <!-- Android 11+ hides other apps unless asked for: Knurl needs to see the Spotify app. -->
     <queries>
         <package android:name="com.spotify.music" />
     </queries>
 
     <application
-        android:name=".DetentApplication"
+        android:name=".KnurlApplication"
         android:allowBackup="false"
         android:label="Knurl"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:theme="@style/Theme.Detent">
+        android:theme="@style/Theme.Knurl">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -38,14 +38,14 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="app.detent" android:host="spotify-callback" />
+                <data android:scheme="app.knurl" android:host="spotify-callback" />
             </intent-filter>
-            <!-- Redirect used by the Spotify app's "allow Detent" screen (SpotifyRemote.REDIRECT_URI). -->
+            <!-- Redirect used by the Spotify app's "allow Knurl" screen (SpotifyRemote.REDIRECT_URI). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="app.detent" android:host="spotify-remote" />
+                <data android:scheme="app.knurl" android:host="spotify-remote" />
             </intent-filter>
         </activity>
 

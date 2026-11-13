@@ -12,11 +12,11 @@ val localProps = Properties().apply {
 }
 
 android {
-    namespace = "app.detent"
+    namespace = "app.knurl"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.detent"
+        applicationId = "app.knurl"
         minSdk = 29 // MediaStore.loadThumbnail for album art
         targetSdk = 35
         versionCode = 1

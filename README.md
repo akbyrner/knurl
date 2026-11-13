@@ -1,6 +1,6 @@
 # Knurl
 
-_Formerly called Detent; the code package is still `app.detent`._
+_Formerly called Detent._
 
 **The phone is the iPod.** Knurl is an Android music player that turns your whole screen into one continuous graphite
 plane with a Cover Flow style album carousel and a click wheel at the bottom. There is no fake device frame: the
@@ -86,13 +86,13 @@ The Spotify App Remote library lives in `app/libs/` (version 0.8.0, from
 ## Project layout
 
 ```
-app/src/main/java/app/detent/
+app/src/main/java/app/knurl/
   MainActivity.kt          fullscreen window, permissions, Spotify sign-in redirect, session restore on resume
-  DetentApplication.kt     owns the single DetentController so state survives activity recreation
+  KnurlApplication.kt     owns the single KnurlController so state survives activity recreation
   data/Library.kt          Album / Track models, MediaStore loading, album art loading, demo library
   playback/                Media3 player service and the controller wrapper the UI talks to
   spotify/                 PKCE sign-in, Web API client, App Remote wrapper
-  ui/                      DetentController (navigation + state), screens, click wheel, buttons, theme bits
+  ui/                      KnurlController (navigation + state), screens, click wheel, buttons, theme bits
 docs/                      architecture and Spotify setup guides, screenshots
 licenses/                  third-party licences that ship with the app (Inter)
 ```

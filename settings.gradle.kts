@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "detent"
+rootProject.name = "knurl"
 include(":app")
