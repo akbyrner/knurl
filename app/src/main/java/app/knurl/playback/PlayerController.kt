@@ -148,13 +148,14 @@ class PlayerController(context: Context) {
         controller?.let { positionMs = it.currentPosition }
     }
 
-    /** Wheel ticks on Now Playing change the phone's music volume, one step per tick. */
+    /** The volume as one of 16 notches (0..15), matching the notches on the wheel's ring and the volume bar. */
+    val volumeStep: Int get() = Math.round(volume * (VOLUME_STEPS - 1))
+
+    /** Wheel ticks on Now Playing move the phone's music volume one notch per tick. */
     fun stepVolume(direction: Int) {
-        audio.adjustStreamVolume(
-            AudioManager.STREAM_MUSIC,
-            if (direction > 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
-            0,
-        )
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        val step = (Math.round(currentVolume() * (VOLUME_STEPS - 1)) + direction).coerceIn(0, VOLUME_STEPS - 1)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(step.toFloat() / (VOLUME_STEPS - 1) * max), 0)
         volume = currentVolume()
         volumeChangedAt = System.nanoTime()
     }
@@ -177,3 +178,5 @@ class PlayerController(context: Context) {
             )
             .build()
 }
+
+const val VOLUME_STEPS = 16

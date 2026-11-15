@@ -15,10 +15,8 @@ abstract class KnurlWidget : AppWidgetProvider() {
         WidgetRender.update(context, manager, javaClass, intArrayOf(id))
 }
 
-class WidgetNowSmall : KnurlWidget()
+class WidgetNow : KnurlWidget()
 class WidgetPinned : KnurlWidget()
-class WidgetNowMedium : KnurlWidget()
-class WidgetNowLarge : KnurlWidget()
 
 /** Taps on the transport buttons: handed to the app's one controller, which drives the phone's player or Spotify. */
 class WidgetActionReceiver : BroadcastReceiver() {
@@ -28,6 +26,7 @@ class WidgetActionReceiver : BroadcastReceiver() {
             "toggle" -> controller.widgetToggle()
             "next" -> controller.widgetSkip(true)
             "prev" -> controller.widgetSkip(false)
+            "page" -> WidgetRender.togglePage(context)
         }
     }
 }

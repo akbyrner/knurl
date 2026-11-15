@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg">
+    <LinearLayout android:id="@+id/page_now" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="8dp" android:paddingBottom="8dp">
+        <ImageView android:id="@+id/art" android:layout_width="54dp" android:layout_height="54dp" android:scaleType="centerCrop" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp" android:orientation="vertical">
+            <TextView android:id="@+id/title" android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end" android:textColor="#FFFFFFFF" android:textSize="14sp" android:fontFamily="sans-serif-medium" android:textStyle="bold" />
+            <TextView android:id="@+id/artist" android:layout_width="match_parent" android:layout_height="wrap_content" android:singleLine="true" android:ellipsize="end" android:textColor="#FFB0B1B6" android:textSize="12sp" />
+        </LinearLayout>
+        <ImageButton android:id="@+id/prev" android:layout_width="32dp" android:layout_height="32dp" android:background="@drawable/widget_tb_bg" android:src="@drawable/ic_widget_prev" android:padding="9dp" android:contentDescription="Previous" />
+        <ImageButton android:id="@+id/play" android:layout_width="44dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:background="@null" android:scaleType="fitCenter" android:contentDescription="Play or pause" />
+        <ImageButton android:id="@+id/next" android:layout_width="32dp" android:layout_height="32dp" android:background="@drawable/widget_tb_bg" android:src="@drawable/ic_widget_next" android:padding="9dp" android:contentDescription="Next" />
+        <ImageButton android:id="@+id/dots_now" android:layout_width="30dp" android:layout_height="44dp" android:background="@null" android:scaleType="fitCenter" android:contentDescription="Show pins" />
+    </LinearLayout>
+    <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="3dp" android:layout_gravity="bottom" android:progressDrawable="@drawable/widget_progress" android:max="1000" />
+    <LinearLayout android:id="@+id/page_pins" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="10dp" android:paddingEnd="4dp" android:visibility="gone">
+        <ImageButton android:id="@+id/p0" android:layout_width="54dp" android:layout_height="54dp" android:background="@null" android:scaleType="fitXY" android:contentDescription="Liked Songs" />
+        <ImageButton android:id="@+id/p1" android:layout_width="54dp" android:layout_height="54dp" android:layout_marginStart="10dp" android:background="@null" android:scaleType="fitXY" android:contentDescription="Last played album" />
+        <ImageButton android:id="@+id/p2" android:layout_width="54dp" android:layout_height="54dp" android:layout_marginStart="10dp" android:background="@null" android:scaleType="fitXY" android:contentDescription="Recently Added" />
+        <ImageButton android:id="@+id/p3" android:layout_width="54dp" android:layout_height="54dp" android:layout_marginStart="10dp" android:background="@null" android:scaleType="fitXY" android:contentDescription="On This Phone" />
+        <ImageView android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+        <ImageButton android:id="@+id/dots_pins" android:layout_width="30dp" android:layout_height="44dp" android:background="@null" android:scaleType="fitCenter" android:contentDescription="Show Now Playing" />
+    </LinearLayout>
+</FrameLayout>

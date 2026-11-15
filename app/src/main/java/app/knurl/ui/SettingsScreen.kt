@@ -72,7 +72,7 @@ fun SettingsScreen(controller: KnurlController, selected: Int, modifier: Modifie
 private fun ThemeTile(theme: ThemeChoice, chosen: Boolean, focused: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val later = theme == ThemeChoice.Silver
     val shape = RoundedCornerShape(12.dp)
-    Column(modifier.clickable(onClick = onClick)) {
+    Column(modifier) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -144,7 +144,6 @@ private fun SettingRow(
             .clip(shape)
             .background(if (on) Color.White.copy(alpha = 0.92f) else ROW_BG)
             .border(1.dp, if (on) Color.White.copy(alpha = 0.9f) else ROW_BORDER, shape)
-            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

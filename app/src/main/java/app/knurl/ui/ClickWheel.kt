@@ -31,11 +31,14 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.ui.graphics.StrokeCap
 
 enum class WheelButton { Menu, Next, PlayPause, Prev, Select }
 
 /** Degrees of finger travel around the ring per detent, like the real wheel. */
-private const val TICK_DEGREES = 16.0
+private const val TICK_DEGREES = 24.0
 
 /**
  * The click wheel. It's drawn and hit-tested as one circle:
@@ -52,6 +55,9 @@ fun ClickWheel(
     onButton: (WheelButton) -> Unit,
     /** Degrees of finger travel around the ring for one detent: a smaller number is a faster wheel. */
     tickDegrees: Double = TICK_DEGREES,
+    /** How many options the screen has, and which is selected: the ring shows one tick for each (up to 24). */
+    options: Int = 1,
+    selected: Int = 0,
 ) {
     val degrees by rememberUpdatedState(tickDegrees)
     val tick by rememberUpdatedState(onTick)
@@ -118,7 +124,7 @@ fun ClickWheel(
                 }
             },
     ) {
-        drawWheel(grain, mono)
+        drawWheel(grain, mono, options, selected)
     }
 }
 
@@ -155,7 +161,7 @@ private val LABEL = Color(0xFFDCDCE0)
  * Draws the wheel in the design's own 328-unit space, scaled to fit: a dark glossy disc with grain, a light top
  * edge, a recessed centre button and the MENU, skip and play/pause labels.
  */
-private fun DrawScope.drawWheel(grain: ShaderBrush, mono: android.graphics.Typeface?) {
+private fun DrawScope.drawWheel(grain: ShaderBrush, mono: android.graphics.Typeface?, options: Int, selected: Int) {
     val k = size.minDimension / 328f
     fun p(x: Float, y: Float) = Offset(x * k, y * k)
     val c = p(164f, 164f)
@@ -187,8 +193,25 @@ private fun DrawScope.drawWheel(grain: ShaderBrush, mono: android.graphics.Typef
         162.2f * k, c, style = Stroke(1.6f * k),
     )
 
-    // The detent: one orange tick at the top of the ring.
-    drawRoundRect(ORANGE, p(162f, 6f), Size(4f * k, 14f * k), CornerRadius(2f * k))
+    // One orange tick per option on screen (up to 24), evenly spaced all the way round; the selected one glows.
+    // Longer lists map onto the 24 ticks by position.
+    val n = options.coerceAtLeast(1)
+    val t = minOf(n, 24)
+    val active = minOf(t - 1, selected.coerceIn(0, n - 1) * t / n)
+    for (i in 0 until t) {
+        val ang = Math.toRadians(-90.0 + i * 360.0 / t)
+        val on = i == active
+        val r1 = if (on) 142f else 147f
+        val r2 = if (on) 159f else 157f
+        val a = p(164f + r1 * cos(ang).toFloat(), 164f + r1 * sin(ang).toFloat())
+        val b = p(164f + r2 * cos(ang).toFloat(), 164f + r2 * sin(ang).toFloat())
+        if (on) {
+            drawLine(Color(0xFFFF7A2A).copy(alpha = 0.7f), a, b, 10f * k, StrokeCap.Round)
+            drawLine(Color(0xFFFFB27A), a, b, 4.5f * k, StrokeCap.Round)
+        } else {
+            drawLine(ORANGE.copy(alpha = 0.45f), a, b, 4f * k, StrokeCap.Round)
+        }
+    }
 
     // Centre button: a dark well, then the button, then its rim.
     drawCircle(Color(0xFF050506), 64f * k, c)

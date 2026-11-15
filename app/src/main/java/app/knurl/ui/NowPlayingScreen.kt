@@ -46,6 +46,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import app.knurl.playback.VOLUME_STEPS
 import kotlinx.coroutines.delay
 
 private val TRACK = Color.White.copy(alpha = 0.18f)
@@ -83,7 +84,7 @@ fun NowPlayingScreen(
     }
 
     Column(modifier) {
-        ScreenHeader("Now Playing", big = false, left = { PlayPauseGlyph(playing = info?.isPlaying == true, color = GLYPH) })
+        ScreenHeader(if (mode == NowPlayingMode.Scrub) "Now Playing · Scrubbing" else "Now Playing", big = false, left = { PlayPauseGlyph(playing = info?.isPlaying == true, color = GLYPH) })
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             // The cover sits above a frosted card holding the song details and the progress bar; it takes the room the card leaves.
             val art = minOf(maxWidth - 60.dp, maxHeight - CARD_HEIGHT - 20.dp)
@@ -137,31 +138,33 @@ fun NowPlayingScreen(
                         Text("Nothing playing", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Box(Modifier.height(12.dp))
-                    if (showVolume) {
-                        Bar(player.volume)
-                        Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
+                    // Turning the wheel swaps the song bar for the volume bar; Select switches to scrubbing.
+                    if (showVolume && mode != NowPlayingMode.Scrub) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SpeakerGlyph(loud = false)
+                            Box(Modifier.weight(1f)) { Bar(player.volumeStep / (VOLUME_STEPS - 1f), VOLUME_STEPS - 1) }
+                            SpeakerGlyph(loud = true)
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("VOLUME", color = Color(0xFFB0B0B5), fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.06.em)
+                            Text("${player.volumeStep + 1} / $VOLUME_STEPS", color = Color(0xFFB0B0B5), fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.06.em)
                         }
                     } else {
                         val duration = info?.durationMs ?: 0L
                         val position = info?.positionMs ?: 0L
                         val fraction = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
                         val scrubbing = mode == NowPlayingMode.Scrub
-                        Bar(fraction)
+                        Bar(fraction, SCRUB_NOTCHES - 1)
                         Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
                             val timeColor = if (scrubbing) Color.White else Color(0xFFB0B0B5)
                             Text(formatClock(position), color = timeColor, fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.06.em, modifier = Modifier.weight(1f))
-                            if (scrubbing) {
-                                Text("SCRUB", color = ORANGE, fontFamily = PlexMono, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.12.em, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                            }
                             Text(
                                 "-" + formatClock(duration - position),
-                                color = timeColor,
+                                color = Color(0xFFB0B0B5),
                                 fontFamily = PlexMono,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
                                 letterSpacing = 0.06.em,
-                                modifier = if (scrubbing) Modifier.weight(1f) else Modifier,
                                 textAlign = TextAlign.End,
                             )
                         }
@@ -220,21 +223,47 @@ private fun InfoRow(kind: InfoKind, content: @Composable () -> Unit) {
     }
 }
 
-/** A thin bar, white where it has played, with one orange tick as the playhead. Used for both progress and volume. */
+/** The speaker symbols at the ends of the volume bar. */
 @Composable
-private fun Bar(fraction: Float) {
+private fun SpeakerGlyph(loud: Boolean) {
+    Canvas(Modifier.size(16.dp)) {
+        val u = size.width / 16f
+        val c = INFO_ICON
+        drawPath(Path().apply { moveTo((if (loud) 1f else 2f) * u, 6 * u); lineTo((if (loud) 3.5f else 4.5f) * u, 6 * u); lineTo((if (loud) 7f else 8f) * u, 3 * u); lineTo((if (loud) 7f else 8f) * u, 13 * u); lineTo((if (loud) 3.5f else 4.5f) * u, 10 * u); lineTo((if (loud) 1f else 2f) * u, 10 * u); close() }, c)
+        if (loud) {
+            val st = Stroke(1.5f * u, cap = StrokeCap.Round)
+            drawArc(c, -50f, 100f, false, Offset(6f * u, 5f * u), androidx.compose.ui.geometry.Size(7f * u, 6f * u), style = st)
+            drawArc(c, -55f, 110f, false, Offset(5f * u, 1.7f * u), androidx.compose.ui.geometry.Size(12f * u, 12.6f * u), style = st)
+        }
+    }
+}
+
+/**
+ * A thin notched bar: dim orange notches at even steps ([steps] gaps, so steps + 1 notches), white where it has
+ * played, and the notch you're on glowing as the playhead. Used for both song position and volume.
+ */
+@Composable
+private fun Bar(fraction: Float, steps: Int) {
     val f = fraction.coerceIn(0f, 1f)
+    val k = Math.round(f * steps)
     BoxWithConstraints(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
         Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(TRACK)) {
             Box(Modifier.fillMaxWidth(f).height(4.dp).background(BONE))
         }
+        Canvas(Modifier.fillMaxWidth().height(8.dp)) {
+            val w = 3.dp.toPx()
+            for (i in 0..steps) {
+                if (i == k) continue
+                drawRoundRect(ORANGE.copy(alpha = 0.45f), Offset((size.width - w) * i / steps, 0f), androidx.compose.ui.geometry.Size(w, size.height), androidx.compose.ui.geometry.CornerRadius(w / 2))
+            }
+        }
         Box(
             Modifier
-                .offset(x = (maxWidth - 3.dp) * f)
+                .offset(x = (maxWidth - 3.dp) * k / steps)
                 .size(3.dp, 14.dp)
                 .shadow(4.dp, RoundedCornerShape(2.dp), ambientColor = ORANGE, spotColor = ORANGE)
                 .clip(RoundedCornerShape(2.dp))
-                .background(ORANGE),
+                .background(Color(0xFFFFB27A)),
         )
     }
 }

@@ -123,6 +123,8 @@ fun KnurlApp(controller: KnurlController) {
                 ClickWheel(
                     modifier = Modifier.size(wheel),
                     tickDegrees = controller.tickDegrees,
+                    options = controller.wheelOptions(screen),
+                    selected = controller.wheelSelected(screen, entry.selected),
                     onTick = { dir ->
                         if (controller.tick(dir)) tickFeel()
                     },

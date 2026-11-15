@@ -303,7 +303,81 @@ object WidgetRender {
         return rv
     }
 
-    fun providers(c: Context) = listOf(WidgetNowSmall::class.java, WidgetPinned::class.java, WidgetNowMedium::class.java, WidgetNowLarge::class.java)
+    // --- strip (4x1, two pages) and compact (2x1) --------------------------------------------------
+
+    /** 0 = Now Playing, 1 = Pins. Flips by itself when playback starts or stops (see [WidgetSync]); the dots flip it by hand. */
+    fun stripPage(c: Context) = prefs(c).getInt("strip_page", 1)
+    fun setStripPage(c: Context, page: Int) { prefs(c).edit().putInt("strip_page", page).apply() }
+    fun togglePage(c: Context) { setStripPage(c, 1 - stripPage(c)); updateAll(c) }
+
+    private fun dots(px: Int, page: Int): Bitmap {
+        val w = px; val h = px * 3 / 2
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val cv = Canvas(out); val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.color = Color.argb(26, 255, 255, 255); cv.drawRect(0f, h * 0.1f, w * 0.02f, h * 0.9f, p)
+        val r = w * 0.1f; val gap = w * 0.17f; val cx = w * 0.56f
+        for (i in 0..1) {
+            val cy = h / 2f + (i - 0.5f) * 2 * gap
+            val on = i == page
+            if (on) { p.color = Color.argb(80, 255, 106, 26); cv.drawCircle(cx, cy, r * 1.9f, p) }
+            p.color = if (on) ORANGE else Color.argb(77, 255, 255, 255)
+            cv.drawCircle(cx, cy, r, p)
+        }
+        return out
+    }
+
+    fun strip(c: Context): RemoteViews {
+        val s = readState(c)
+        val page = stripPage(c)
+        val rv = RemoteViews(c.packageName, R.layout.widget_now_strip)
+        rv.setViewVisibility(R.id.page_now, if (page == 0) android.view.View.VISIBLE else android.view.View.GONE)
+        rv.setViewVisibility(R.id.progress, if (page == 0) android.view.View.VISIBLE else android.view.View.GONE)
+        rv.setViewVisibility(R.id.page_pins, if (page == 1) android.view.View.VISIBLE else android.view.View.GONE)
+        val d = dp(c, 30f).toInt() * 2
+        rv.setImageViewBitmap(R.id.dots_now, dots(d, 0)); rv.setImageViewBitmap(R.id.dots_pins, dots(d, 1))
+        rv.setOnClickPendingIntent(R.id.dots_now, action(c, "page", 4))
+        rv.setOnClickPendingIntent(R.id.dots_pins, action(c, "page", 4))
+        fillText(rv, s)
+        rv.setImageViewBitmap(R.id.art, cover(c, "art", dp(c, 54f).toInt() * 2, dp(c, 12f) * 2, s.album.ifEmpty { s.title }))
+        rv.setProgressBar(R.id.progress, 1000, (s.fraction * 1000).toInt(), false)
+        rv.setImageViewBitmap(R.id.play, steel(dp(c, 44f).toInt() * 2, s.playing))
+        rv.setOnClickPendingIntent(R.id.play, action(c, "toggle", 1))
+        rv.setOnClickPendingIntent(R.id.prev, action(c, "prev", 2))
+        rv.setOnClickPendingIntent(R.id.next, action(c, "next", 3))
+        listOf(R.id.p0, R.id.p1, R.id.p2, R.id.p3).forEachIndexed { i, id ->
+            rv.setImageViewBitmap(id, pinTile(c, i, dp(c, 54f).toInt() * 2))
+            rv.setOnClickPendingIntent(id, openApp(c, EXTRA_PIN to i, code = 20 + i))
+        }
+        rv.setOnClickPendingIntent(R.id.page_now, openApp(c, code = 13))
+        return rv
+    }
+
+    fun compact(c: Context): RemoteViews {
+        val s = readState(c)
+        val rv = RemoteViews(c.packageName, R.layout.widget_now_compact)
+        fillText(rv, s)
+        rv.setImageViewBitmap(R.id.art, cover(c, "art", dp(c, 54f).toInt() * 2, dp(c, 12f) * 2, s.album.ifEmpty { s.title }))
+        rv.setImageViewBitmap(R.id.play, knob(dp(c, 44f).toInt() * 2, s.fraction, s.playing))
+        rv.setOnClickPendingIntent(R.id.play, action(c, "toggle", 1))
+        rv.setOnClickPendingIntent(R.id.root, openApp(c, code = 14))
+        return rv
+    }
+
+    /** One Now Playing widget that picks its layout from the size the launcher gives it. */
+    fun now(c: Context, options: android.os.Bundle?): RemoteViews {
+        val w = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)?.takeIf { it > 0 } ?: 110
+        val h = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)?.takeIf { it > 0 } ?: 110
+        val wide = w >= 240
+        return when {
+            !wide && h < 90 -> compact(c)
+            !wide -> small(c, options)
+            h < 90 -> strip(c)
+            h < 230 -> medium(c)
+            else -> large(c)
+        }
+    }
+
+    fun providers(c: Context) = listOf(WidgetNow::class.java, WidgetPinned::class.java)
 
     fun updateAll(c: Context) {
         val mgr = AppWidgetManager.getInstance(c)
@@ -316,10 +390,8 @@ object WidgetRender {
     fun update(c: Context, mgr: AppWidgetManager, cls: Class<*>, ids: IntArray) {
         for (id in ids) {
             val rv = when (cls) {
-                WidgetNowSmall::class.java -> small(c, mgr.getAppWidgetOptions(id))
-                WidgetPinned::class.java -> pinned(c)
-                WidgetNowMedium::class.java -> medium(c)
-                else -> large(c)
+                WidgetNow::class.java -> now(c, mgr.getAppWidgetOptions(id))
+                else -> pinned(c)
             }
             mgr.updateAppWidget(id, rv)
         }

@@ -115,7 +115,7 @@ private fun PinArt(album: Album?) {
 @Composable
 private fun PinTile(name: String, on: Boolean, onClick: () -> Unit, modifier: Modifier, art: @Composable () -> Unit) {
     val shape = RoundedCornerShape(10.dp)
-    Column(modifier.clickable(onClick = onClick)) {
+    Column(modifier) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -144,7 +144,6 @@ private fun RoundButton(icon: RowIcon, description: String, on: Boolean, onClick
             .clip(CircleShape)
             .background(if (on) Color.White.copy(alpha = 0.92f) else GLASS)
             .border(1.dp, if (on) Color.White.copy(alpha = 0.9f) else GLASS_BORDER, CircleShape)
-            .clickable(onClick = onClick)
             .androidSemantics(description),
         contentAlignment = Alignment.Center,
     ) {
@@ -164,7 +163,6 @@ private fun LibraryRow(icon: RowIcon, title: String, on: Boolean, onClick: () ->
             .clip(shape)
             .background(if (on) Color.White.copy(alpha = 0.92f) else ROW_BG)
             .border(1.dp, if (on) Color.White.copy(alpha = 0.9f) else ROW_BORDER, shape)
-            .clickable(onClick = onClick)
             .padding(start = 5.dp, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

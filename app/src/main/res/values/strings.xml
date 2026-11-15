@@ -4,4 +4,5 @@
     <string name="widget_pinned_small">Four pins. Tap one to play it.</string>
     <string name="widget_now_medium">Cover, song, progress and transport buttons.</string>
     <string name="widget_now_large">Now Playing with the next three songs from Up Next.</string>
+    <string name="widget_now">One Now Playing widget. Drag its handles and it changes layout: 2x1, 4x1 strip with a Pins page, 2x2, 4x2 or 4x4.</string>
 </resources>

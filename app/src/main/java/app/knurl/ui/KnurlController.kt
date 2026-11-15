@@ -179,7 +179,7 @@ class KnurlController(
         private set
 
     val wheelSpeedLabel: String get() = listOf("Slow", "Medium", "Fast")[wheelSpeed]
-    val tickDegrees: Double get() = listOf(22.0, 16.0, 11.0)[wheelSpeed]
+    val tickDegrees: Double get() = listOf(32.0, 24.0, 16.0)[wheelSpeed]
 
     init {
         player.setModes(shuffle, repeat.playerMode)
@@ -928,7 +928,23 @@ class KnurlController(
         is Screen.SpotifyArtistAlbums, Screen.NowPlaying -> null
     }
 
-    private fun rowCount(screen: Screen): Int = when (screen) {
+    /** How many ticks the wheel's ring shows: the volume notches or song notches on Now Playing, else one per row. */
+    fun wheelOptions(screen: Screen): Int = when {
+        screen != Screen.NowPlaying -> rowCount(screen)
+        nowPlayingMode == NowPlayingMode.Scrub -> SCRUB_NOTCHES
+        else -> app.knurl.playback.VOLUME_STEPS
+    }
+
+    fun wheelSelected(screen: Screen, selected: Int): Int = when {
+        screen != Screen.NowPlaying -> selected
+        nowPlayingMode == NowPlayingMode.Scrub -> {
+            val i = nowPlayingInfo(System.currentTimeMillis())
+            if (i != null && i.durationMs > 0) Math.round(i.positionMs.toFloat() / i.durationMs * (SCRUB_NOTCHES - 1)) else 0
+        }
+        else -> player.volumeStep
+    }
+
+    fun rowCount(screen: Screen): Int = when (screen) {
         Screen.NowPlaying -> 0
         Screen.MainMenu -> menuEntries().size
         Screen.Settings -> settingsCount
@@ -953,9 +969,9 @@ class KnurlController(
     fun tick(direction: Int): Boolean = when (current.screen) {
         Screen.NowPlaying -> {
             if (nowPlayingMode == NowPlayingMode.Scrub) {
-                // About 60 ticks cover a whole song, between 1 and 10 seconds each.
+                // One click moves the playhead one notch: a notch is 5% of the song.
                 val duration = nowPlayingInfo(System.currentTimeMillis())?.durationMs ?: 0L
-                seekBy(direction * (duration / 60).coerceIn(1_000L, 10_000L))
+                seekBy(direction * (duration / (SCRUB_NOTCHES - 1)).coerceAtLeast(1_000L))
             } else {
                 player.stepVolume(direction)
             }
@@ -1154,3 +1170,6 @@ fun formatTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
     return "%d:%02d".format(total / 60, total % 60)
 }
+
+/** The song bar has a notch every 5%: 21 of them, 0 to 100. */
+const val SCRUB_NOTCHES = 21

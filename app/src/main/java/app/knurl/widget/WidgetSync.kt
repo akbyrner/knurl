@@ -27,7 +27,12 @@ object WidgetSync {
     suspend fun push(c: Context, controller: KnurlController) {
         val info = controller.nowPlayingInfo(System.currentTimeMillis())
         val queue = if (info != null) controller.widgetUpcoming() else emptyList()
-        val e = c.getSharedPreferences("widgets", Context.MODE_PRIVATE).edit()
+        val sp = c.getSharedPreferences("widgets", Context.MODE_PRIVATE)
+        // The strip flips to Now Playing when a song starts and back to Pins when playback ends.
+        val playing = info != null
+        if (!sp.contains("was_playing") || sp.getBoolean("was_playing", false) != playing) WidgetRender.setStripPage(c, if (playing) 0 else 1)
+        val e = sp.edit()
+        e.putBoolean("was_playing", playing)
         e.putBoolean("has", info != null)
         e.putString("title", info?.title ?: "")
         e.putString("artist", info?.artist ?: "")

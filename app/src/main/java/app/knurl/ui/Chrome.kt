@@ -174,8 +174,7 @@ fun MiniPlayer(controller: KnurlController, modifier: Modifier = Modifier, selec
             .height(64.dp)
             .clip(shape)
             .background(GLASS)
-            .border(if (selected) 2.dp else 1.dp, if (selected) BONE else GLASS_BORDER, shape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .border(if (selected) 2.dp else 1.dp, if (selected) BONE else GLASS_BORDER, shape),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(start = 10.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
