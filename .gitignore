@@ -7,5 +7,8 @@ local.properties
 *.keystore
 *.jks
 
-# Bundled librespot binary (14 MB). Rebuild with ~/src/detent-spike/build.sh and copy it here.
+# Spotify App Remote SDK: download it yourself (see README, "Build and run"); it isn't redistributed here.
+app/libs/*.aar
+
+# Native libraries from an old experiment; not used by the app.
 app/src/main/jniLibs/

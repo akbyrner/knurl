@@ -7,14 +7,23 @@ plane with a Cover Flow style album carousel and a click wheel at the bottom. Th
 phone itself is the player. It plays music from the phone and drives the Spotify app as a remote control, with the
 library, queue, likes and now-playing info all shown in Knurl's own screens.
 
-It is a personal project built for one person's Pixel 10a. It runs on any Android 10+ phone.
+It runs on any Android 10+ phone.
 
 <p>
-  <img src="docs/images/main-menu.png" width="23%" alt="Main menu with the now-playing card">
-  <img src="docs/images/spotify-home.png" width="23%" alt="Spotify home as a carousel of covers">
+  <img src="docs/images/main-menu.png" width="23%" alt="Home: pinned shelf, library and the now-playing card">
+  <img src="docs/images/flow.png" width="23%" alt="Flow, the album carousel">
   <img src="docs/images/now-playing.png" width="23%" alt="Now Playing with large cover art">
   <img src="docs/images/up-next.png" width="23%" alt="Up Next queue">
 </p>
+<p>
+  <img src="docs/images/albums.png" width="23%" alt="Albums grid">
+  <img src="docs/images/album.png" width="23%" alt="An album">
+  <img src="docs/images/artists.png" width="23%" alt="Artists with an A–Z rail">
+  <img src="docs/images/songs.png" width="23%" alt="Songs">
+</p>
+
+The screenshots were taken in the Android emulator with made-up demo songs. The Spotify screen,
+[docs/images/spotify-home.png](docs/images/spotify-home.png), shows only the Liked Songs card.
 
 ## Features
 
@@ -25,7 +34,14 @@ It is a personal project built for one person's Pixel 10a. It runs on any Androi
   frosted-glass rows with a bright white highlight. The look is called Graphite Glass: graphite with a faint grain, and a
   soft blurred wash of the playing cover at the top.
 - **Home screen** – a greeting, round Shuffle and Settings buttons, a Pinned shelf (Liked Songs, last played album, Recently Added, On This Phone) and the library list. Albums are a grid, Artists have an A–Z rail, Playlists and Sources have their own lists, and Settings has a theme picker plus click sound, haptic ticks and wheel speed.
-- **Widgets** – four home-screen widgets: small Now Playing (a knob whose orange arc is the song's progress), small Pinned, medium Now Playing with transport buttons, and large with the next three songs. They redraw when the song changes and every 30 seconds while playing.
+- **Widgets** – two home-screen widgets.
+  - **Now Playing**: one widget that changes layout as you resize it (2x1, 4x1, 2x2, 4x2, 4x4).
+    - Small, it's the cover with a knob whose orange arc is the song's progress.
+    - Wider, it gains transport buttons.
+    - The 4x1 strip flips between Now Playing and the pins.
+    - The largest size also lists the next three songs.
+  - **Pins**: four pins; tap one to play it.
+  - Both redraw when the song changes and every 30 seconds while playing.
 - **Now Playing** – large cover art over a glass card with song / artist / album, a progress bar with scrubbing, and a volume bar. Select
   switches the wheel between volume and scrubbing.
 - **Four corner buttons around the wheel** – shuffle (top-left), repeat (top-right), like (bottom-left) and Up Next
@@ -64,13 +80,17 @@ It is a personal project built for one person's Pixel 10a. It runs on any Androi
 ## Build and run
 
 ```sh
-# 1. Tell Gradle where the Android SDK is, and (optionally) your Spotify Client ID. Git ignores this file.
+# 1. Get the Spotify App Remote library (not in this repository; it's under Spotify's developer terms):
+#    download spotify-app-remote-release-0.8.0.aar from the v0.8.0 release of
+#    https://github.com/spotify/android-sdk and put it in app/libs/. Git ignores it.
+
+# 2. Tell Gradle where the Android SDK is, and (optionally) your Spotify Client ID. Git ignores this file.
 cat > local.properties <<'EOF'
 sdk.dir=/path/to/Android/sdk
 spotify.clientId=<your Spotify app's Client ID>
 EOF
 
-# 2. Build and install on a connected phone
+# 3. Build and install on a connected phone
 export JAVA_HOME=/path/to/jdk-17
 ./gradlew :app:installDebug
 ```
@@ -78,10 +98,6 @@ export JAVA_HOME=/path/to/jdk-17
 Without a Client ID the app still works as a local player; the Spotify source just shows "Spotify isn't set up".
 Music on the phone needs the audio permission, which the app asks for on first launch. Until then (or if the phone
 has no music) it shows a small demo library.
-
-The Spotify App Remote library lives in `app/libs/` (version 0.8.0, from
-[github.com/spotify/android-sdk](https://github.com/spotify/android-sdk)). It is subject to Spotify's developer terms;
-**remove it from the repository before ever making the repository public** and download it again locally.
 
 ## Project layout
 
@@ -94,7 +110,7 @@ app/src/main/java/app/knurl/
   spotify/                 PKCE sign-in, Web API client, App Remote wrapper
   ui/                      KnurlController (navigation + state), screens, click wheel, buttons, theme bits
 docs/                      architecture and Spotify setup guides, screenshots
-licenses/                  third-party licences that ship with the app (Inter)
+licenses/                  third-party licences that ship with the app (the fonts)
 ```
 
 See [docs/architecture.md](docs/architecture.md) for how the pieces fit together.
@@ -115,9 +131,16 @@ Not built yet:
 
 ## Credits and licences
 
-- [Inter](https://rsms.me/inter/) typeface, SIL Open Font License 1.1 (`licenses/Inter-OFL.txt`).
+- Fonts, all SIL Open Font License 1.1:
+  - [Inter](https://rsms.me/inter/) (`licenses/Inter-OFL.txt`).
+  - [Archivo](https://github.com/Omnibus-Type/Archivo) (`licenses/Archivo-OFL.txt`).
+  - [IBM Plex Mono](https://github.com/IBM/plex) (`licenses/IBMPlexMono-OFL.txt`).
 - Spotify App Remote SDK and Web API, used under [Spotify's developer terms](https://developer.spotify.com/terms).
-  Knurl does not stream or decode Spotify audio; the Spotify app does.
+  The SDK isn't redistributed here (see *Build and run*). Knurl does not stream or decode Spotify audio; the
+  Spotify app does.
 - AndroidX Media3 and Jetpack Compose (Apache 2.0), Gson (Apache 2.0).
 
-The project itself is a private personal project with no open-source licence: all rights reserved.
+Knurl itself is MIT licensed. See [LICENSE](LICENSE).
+
+Related: [knurl-ipod](https://github.com/akbyrner/knurl-ipod), the same look as firmware for a real iPod Video,
+and [PodManager](https://github.com/akbyrner/PodManager), its Windows sync app.
